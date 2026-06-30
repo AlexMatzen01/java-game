@@ -1,0 +1,6 @@
+assets/ignore
+assets/assets
+build
+.agents
+.gradle
+.vscode

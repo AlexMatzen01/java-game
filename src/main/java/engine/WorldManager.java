@@ -1,5 +1,6 @@
 package engine;
 
+import blocks.Blocks;
 import player.Player;
 import util.TickSystem;
 import world.Chunk;
@@ -20,7 +21,7 @@ import java.util.Map;
 
 public final class WorldManager {
     private static final int SAVE_MAGIC = 0x57524C44;
-    private static final int SAVE_VERSION = 1;
+    private static final int SAVE_VERSION = 2;
     private static final String SAVE_FILE = "world.bin";
 
     private WorldManager() {
@@ -74,13 +75,15 @@ public final class WorldManager {
         Path savePath = slot.directory().resolve(SAVE_FILE);
         if (!Files.exists(savePath)) {
             world.ensureSpawnArea();
+            player.setSpawnPosition(world.findSpawnPosition());
+            player.camera().position().set(world.findSpawnPosition());
             return new LoadedWorld(world, player, ticks);
         }
 
         try (DataInputStream input = new DataInputStream(Files.newInputStream(savePath))) {
             int magic = input.readInt();
             int version = input.readInt();
-            if (magic != SAVE_MAGIC || version != SAVE_VERSION) {
+            if (magic != SAVE_MAGIC || version < 1 || version > SAVE_VERSION) {
                 throw new IllegalStateException("Unsupported save format for world: " + slot.name());
             }
 
@@ -92,6 +95,13 @@ public final class WorldManager {
             float pz = input.readFloat();
             float yaw = input.readFloat();
             float pitch = input.readFloat();
+
+            int modeOrdinal = Player.GameMode.SURVIVAL.ordinal();
+            int selectedBlockId = Blocks.DIRT.id();
+            if (version >= 2) {
+                modeOrdinal = input.readInt();
+                selectedBlockId = input.readInt();
+            }
 
             int chunkCount = input.readInt();
             Map<ChunkPos, short[]> snapshot = new HashMap<>();
@@ -111,6 +121,9 @@ public final class WorldManager {
             player.camera().position().set(px, py, pz);
             player.camera().setYaw(yaw);
             player.camera().setPitch(pitch);
+            player.setGameMode(Player.GameMode.values()[Math.max(0, Math.min(Player.GameMode.values().length - 1, modeOrdinal))]);
+            player.setSelectedPlaceBlockId(selectedBlockId);
+            player.setSpawnPosition(world.findSpawnPosition());
             return new LoadedWorld(world, player, ticks);
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to load world: " + slot.name(), exception);
@@ -142,6 +155,8 @@ public final class WorldManager {
             output.writeFloat(player.camera().position().z);
             output.writeFloat(player.camera().yaw());
             output.writeFloat(player.camera().pitch());
+            output.writeInt(player.gameMode().ordinal());
+            output.writeInt(player.selectedPlaceBlockId());
 
             output.writeInt(snapshot.size());
             for (Map.Entry<ChunkPos, short[]> entry : snapshot.entrySet()) {

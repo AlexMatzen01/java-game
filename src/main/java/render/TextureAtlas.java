@@ -1,20 +1,26 @@
 package render;
 
-import org.lwjgl.stb.STBImage;
-import org.lwjgl.system.MemoryStack;
-import org.lwjgl.system.MemoryUtil;
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.lwjgl.stb.STBImage;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
 
 public final class TextureAtlas {
-    private static final String[] TEXTURE_FILES = {
-            "dirt",
-        "cobblestone"
-    };
+    public static int COLUMNS;
+    public static int ROWS;
+
+    private static final Map<String, Integer> TEXTURE_SLOTS = new HashMap<>();
 
     private final int tileSize;
     private final int width;
@@ -28,22 +34,42 @@ public final class TextureAtlas {
         this.pixels = pixels;
     }
 
-    public static TextureAtlas load() {
-        LoadedTexture[] textures = new LoadedTexture[TEXTURE_FILES.length];
+    public static int getSlot(String name) {
+        Integer slot = TEXTURE_SLOTS.get(name);
+        if (slot == null) {
+            throw new IllegalArgumentException("Unknown block texture: " + name);
+        }
+        return slot;
+    }
+
+    public static TextureAtlas load(Collection<String> textureNames) {
+        List<String> names = new ArrayList<>(textureNames);
+        Collections.sort(names);
+
+        int count = names.size();
+        COLUMNS = (int) Math.ceil(Math.sqrt(count));
+        ROWS = (int) Math.ceil((double) count / COLUMNS);
+
+        TEXTURE_SLOTS.clear();
+        for (int i = 0; i < names.size(); i++) {
+            TEXTURE_SLOTS.put(names.get(i), i);
+        }
+
+        LoadedTexture[] textures = new LoadedTexture[names.size()];
         int tileSize = 0;
-        for (int i = 0; i < TEXTURE_FILES.length; i++) {
-            textures[i] = loadTexture(TEXTURE_FILES[i]);
+        for (int i = 0; i < names.size(); i++) {
+            textures[i] = loadTexture(names.get(i));
             tileSize = Math.max(tileSize, Math.max(textures[i].width, textures[i].height));
         }
 
-        int atlasWidth = tileSize * 2;
-        int atlasHeight = tileSize * 2;
-        ByteBuffer atlasPixels = MemoryUtil.memAlloc(atlasWidth * atlasHeight * 4);
+        int atlasWidth = tileSize * COLUMNS;
+        int atlasHeight = tileSize * ROWS;
+        ByteBuffer atlasPixels = MemoryUtil.memCalloc(atlasWidth * atlasHeight * 4);
 
         for (int index = 0; index < textures.length; index++) {
             LoadedTexture texture = textures[index];
-            int tileX = index % 2;
-            int tileY = index / 2;
+            int tileX = index % COLUMNS;
+            int tileY = index / COLUMNS;
             for (int y = 0; y < tileSize; y++) {
                 int destinationRow = ((tileY * tileSize + y) * atlasWidth + tileX * tileSize) * 4;
                 int sourceY = Math.min(texture.height - 1, (int) ((long) y * texture.height / tileSize));
@@ -79,20 +105,12 @@ public final class TextureAtlas {
         return pixels;
     }
 
-    public float[] regionUv(int slot, float u, float v) {
-        int tileX = slot % 2;
-        int tileY = slot / 2;
-        float tileWidth = 1.0f / 2.0f;
-        float tileHeight = 1.0f / 2.0f;
-        return new float[]{tileX * tileWidth + u * tileWidth, tileY * tileHeight + v * tileHeight};
-    }
-
     public void free() {
         MemoryUtil.memFree(pixels);
     }
 
-    private static LoadedTexture loadTexture(String baseName) {
-        byte[] bytes = readTextureBytes(baseName);
+    private static LoadedTexture loadTexture(String name) {
+        byte[] bytes = readTextureBytes(name);
         ByteBuffer encoded = MemoryUtil.memAlloc(bytes.length);
         encoded.put(bytes).flip();
 
@@ -103,7 +121,7 @@ public final class TextureAtlas {
             STBImage.stbi_set_flip_vertically_on_load(true);
             ByteBuffer pixels = STBImage.stbi_load_from_memory(encoded, widthBuffer, heightBuffer, channelsBuffer, 4);
             if (pixels == null) {
-                throw new IllegalStateException("Failed to load texture '" + baseName + "': " + STBImage.stbi_failure_reason());
+                throw new IllegalStateException("Failed to load texture '" + name + "': " + STBImage.stbi_failure_reason());
             }
             return new LoadedTexture(widthBuffer.get(0), heightBuffer.get(0), pixels);
         } finally {
@@ -111,24 +129,16 @@ public final class TextureAtlas {
         }
     }
 
-    private static byte[] readTextureBytes(String baseName) {
-        String[] candidates = {
-                "assets/textures/" + baseName + ".png",
-                "assets/textures/" + baseName + ".jpg",
-                "src/main/resources/assets/textures/" + baseName + ".png",
-                "src/main/resources/assets/textures/" + baseName + ".jpg"
-        };
-        for (String candidate : candidates) {
-            Path path = Path.of(candidate);
-            if (Files.exists(path)) {
-                try {
-                    return Files.readAllBytes(path);
-                } catch (IOException exception) {
-                    throw new IllegalStateException("Failed to read texture file: " + candidate, exception);
-                }
+    private static byte[] readTextureBytes(String name) {
+        Path path = Path.of("assets/cubic/" + name + ".png");
+        if (Files.exists(path)) {
+            try {
+                return Files.readAllBytes(path);
+            } catch (IOException exception) {
+                throw new IllegalStateException("Failed to read texture file: " + path, exception);
             }
         }
-        throw new IllegalStateException("Missing texture file for: " + baseName);
+        throw new IllegalStateException("Missing texture file for: " + name);
     }
 
     private record LoadedTexture(int width, int height, ByteBuffer pixels) {

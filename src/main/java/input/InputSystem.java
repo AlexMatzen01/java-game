@@ -1,6 +1,7 @@
 package input;
 
 import org.lwjgl.glfw.GLFW;
+import org.lwjgl.glfw.GLFWCharCallback;
 import org.lwjgl.glfw.GLFWCursorPosCallback;
 import org.lwjgl.glfw.GLFWKeyCallback;
 import org.lwjgl.glfw.GLFWMouseButtonCallback;
@@ -10,6 +11,7 @@ public final class InputSystem {
     private final boolean[] mouseButtons = new boolean[GLFW.GLFW_MOUSE_BUTTON_LAST + 1];
     private final boolean[] keyPressed = new boolean[GLFW.GLFW_KEY_LAST + 1];
     private final boolean[] mousePressed = new boolean[GLFW.GLFW_MOUSE_BUTTON_LAST + 1];
+    private final StringBuilder typedChars = new StringBuilder();
     private double mouseDeltaX;
     private double mouseDeltaY;
     private double lastMouseX;
@@ -59,9 +61,14 @@ public final class InputSystem {
             lastMouseY = yPos;
         });
 
+        GLFWCharCallback charCallback = GLFWCharCallback.create((window, codepoint) -> {
+            typedChars.append((char) codepoint);
+        });
+
         GLFW.glfwSetKeyCallback(windowHandle, keyCallback);
         GLFW.glfwSetMouseButtonCallback(windowHandle, mouseButtonCallback);
         GLFW.glfwSetCursorPosCallback(windowHandle, cursorPosCallback);
+        GLFW.glfwSetCharCallback(windowHandle, charCallback);
     }
 
     public void setCursorLocked(boolean locked) {
@@ -120,5 +127,14 @@ public final class InputSystem {
         double delta = mouseDeltaY;
         mouseDeltaY = 0.0;
         return delta;
+    }
+
+    public String consumeTypedChars() {
+        if (typedChars.isEmpty()) {
+            return "";
+        }
+        String chars = typedChars.toString();
+        typedChars.setLength(0);
+        return chars;
     }
 }
