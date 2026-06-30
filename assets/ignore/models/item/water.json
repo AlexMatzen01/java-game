@@ -1,4 +1,0 @@
-{
-  "parent": "item/fluid_item",
-  "textures": {"fluid": "block/water_flow_notint_opaque"}
-}
