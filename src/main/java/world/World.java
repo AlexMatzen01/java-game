@@ -3,7 +3,6 @@ package world;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -197,9 +196,9 @@ public final class World {
     }
 
     public void updateFallingBlocks(float deltaSeconds) {
-        Iterator<FallingBlock> it = fallingBlocks.iterator();
-        while (it.hasNext()) {
-            FallingBlock fb = it.next();
+        var snapshot = List.copyOf(fallingBlocks);
+        fallingBlocks.clear();
+        for (FallingBlock fb : snapshot) {
             fb.velocityY = Math.max(fb.velocityY - FALLING_BLOCK_GRAVITY * deltaSeconds, -FALLING_BLOCK_TERMINAL_VELOCITY);
             float newY = fb.y + fb.velocityY * deltaSeconds;
 
@@ -211,9 +210,9 @@ public final class World {
                 if (getBlock(gridX, gridY, gridZ) == Blocks.AIR.id()) {
                     setBlock(gridX, gridY, gridZ, fb.blockId);
                 }
-                it.remove();
             } else {
                 fb.y = newY;
+                fallingBlocks.add(fb);
             }
         }
     }
