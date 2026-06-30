@@ -1,6 +1,6 @@
 # Java Game V0.0.1a
 
-# Voxel World
+# Voxel World (essentially just a Minecraft clone)
 
 A voxel-based sandbox game with procedurally generated terrain, dynamic lighting, and a day/night cycle. Built in Java with LWJGL 3 and OpenGL 3.3.
 
