@@ -1,4 +1,0 @@
-{
-  "parent": "block/template_log_horizontal",
-  "textures": {"top": "block/acacia_log_top", "side": "block/acacia_log"}
-}

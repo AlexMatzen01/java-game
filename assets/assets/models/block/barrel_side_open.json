@@ -1,4 +1,0 @@
-{
-  "parent": "block/barrel_side",
-  "textures": {"front": "block/barrel_top_open"}
-}

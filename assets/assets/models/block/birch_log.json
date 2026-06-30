@@ -1,4 +1,0 @@
-{
-  "parent": "block/template_log",
-  "textures": {"top": "block/birch_log_top", "side": "block/birch_log"}
-}
