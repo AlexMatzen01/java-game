@@ -337,7 +337,8 @@ public final class World {
             if (worldY == surfaceHeight) {
                 return surfaceBlock(worldX, worldZ, surfaceHeight);
             }
-            if (isDesert(worldX, worldZ)) {
+            Biome biome = biomeAt(worldX, worldZ);
+            if (biome == Biome.DESERT) {
                 if (worldY >= surfaceHeight - TERRAIN_DIRT_LAYERS) {
                     return Blocks.SAND.id();
                 }
@@ -349,7 +350,7 @@ public final class World {
             return Blocks.COBBLESTONE.id();
         }
 
-        if (worldY > surfaceHeight && !isDesert(worldX, worldZ)) {
+        if (worldY > surfaceHeight && biomeAt(worldX, worldZ) != Biome.DESERT) {
             int treeBlock = generateTreeBlock(worldX, worldY, worldZ);
             if (treeBlock != Blocks.AIR.id()) {
                 return treeBlock;
@@ -359,8 +360,12 @@ public final class World {
     }
 
     private int surfaceBlock(int worldX, int worldZ, int surfaceHeight) {
-        if (isDesert(worldX, worldZ)) {
+        Biome biome = biomeAt(worldX, worldZ);
+        if (biome == Biome.DESERT) {
             return Blocks.SAND.id();
+        }
+        if (biome == Biome.PLAINS) {
+            return Blocks.GRASS.id();
         }
 
         float climate = valueNoise(worldX - 9000, worldZ + 3000, 0.012f);
@@ -384,8 +389,26 @@ public final class World {
         return dryness > 0.50f;
     }
 
+    private Biome biomeAt(int worldX, int worldZ) {
+        if (isDesert(worldX, worldZ)) {
+            return Biome.DESERT;
+        }
+        float biomeNoise = valueNoise(worldX + 2000, worldZ - 5000, 0.015f);
+        if (biomeNoise > 0.55f) {
+            return Biome.FOREST;
+        }
+        return Biome.PLAINS;
+    }
+
     private float forestDensity(int worldX, int worldZ) {
-        return valueNoise(worldX - 12000, worldZ + 8000, 0.012f);
+        Biome biome = biomeAt(worldX, worldZ);
+        if (biome == Biome.DESERT) {
+            return 0.0f;
+        }
+        if (biome == Biome.PLAINS) {
+            return 0.35f + valueNoise(worldX, worldZ, 0.04f) * 0.15f;
+        }
+        return valueNoise(worldX - 12000, worldZ + 8000, 0.012f) * 0.64f + 0.30f;
     }
 
     private boolean isCave(int worldX, int worldY, int worldZ, int surfaceHeight) {
@@ -484,9 +507,16 @@ public final class World {
         float dryness = valueNoise(worldX + 5000, worldZ - 3000, 0.008f);
         float desertBlend = MathUtil.clamp((dryness - 0.30f) / 0.30f, 0.0f, 1.0f);
 
+        Biome biome = biomeAt(worldX, worldZ);
+        float plainsBlend = biome == Biome.PLAINS ? 1.0f : 0.0f;
+
         float continentAmp = TERRAIN_HEIGHT_VARIATION * (1.0f - desertBlend * 0.70f);
-        float hillAmp = (TERRAIN_HEIGHT_VARIATION * 0.625f) * (1.0f - desertBlend * 0.85f);
-        float ridgeAmp = (TERRAIN_HEIGHT_VARIATION * 0.5f) * (1.0f - desertBlend * 0.95f);
+        float hillAmp = (TERRAIN_HEIGHT_VARIATION * 0.625f)
+                * (1.0f - desertBlend * 0.85f)
+                * (1.0f - plainsBlend * 0.55f);
+        float ridgeAmp = (TERRAIN_HEIGHT_VARIATION * 0.5f)
+                * (1.0f - desertBlend * 0.95f)
+                * (1.0f - plainsBlend * 0.65f);
         float detailAmp = 10.0f * (1.0f - desertBlend * 0.50f);
 
         float base = TERRAIN_BASE_HEIGHT

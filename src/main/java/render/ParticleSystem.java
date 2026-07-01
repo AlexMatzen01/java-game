@@ -13,6 +13,17 @@ import java.util.Random;
 public final class ParticleSystem {
     private final List<Particle> particles = new ArrayList<>();
     private final Random random = new Random();
+    private boolean gpuMode;
+
+    public void setGpuMode(boolean gpuMode) {
+        this.gpuMode = gpuMode;
+    }
+
+    public List<Particle> drainParticles() {
+        List<Particle> drained = new ArrayList<>(particles);
+        particles.clear();
+        return drained;
+    }
 
     public void spawnBlockBreak(BlockPos pos, int blockId) {
         Block block = BlockRegistry.get(blockId);
@@ -46,6 +57,9 @@ public final class ParticleSystem {
     }
 
     public void update(float delta) {
+        if (gpuMode) {
+            return;
+        }
         Iterator<Particle> it = particles.iterator();
         while (it.hasNext()) {
             Particle p = it.next();

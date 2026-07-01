@@ -59,6 +59,14 @@ public final class TickSystem {
         return getSkyBrightness() > 0.5f;
     }
 
+    public void setCycleSeconds(double seconds) {
+        this.cycleSeconds = seconds % CYCLE_SECONDS;
+        if (this.cycleSeconds < 0.0) {
+            this.cycleSeconds += CYCLE_SECONDS;
+        }
+        this.accumulator = 0.0;
+    }
+
     public float getSunAngleRadians() {
         return (float) (getCycleProgress() * Math.PI * 2.0 - Math.PI / 2.0);
     }

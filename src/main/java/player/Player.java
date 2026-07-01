@@ -346,10 +346,14 @@ public final class Player {
                 && minZ < blockMaxZ && maxZ > blockMinZ;
     }
 
-    private void resetToSpawn() {
-        camera.position().set(spawnPosition);
+    public void teleport(float x, float y, float z) {
+        camera.position().set(x, y, z);
         velocity.set(0.0f, 0.0f, 0.0f);
         onGround = false;
+    }
+
+    private void resetToSpawn() {
+        teleport(spawnPosition.x, spawnPosition.y, spawnPosition.z);
     }
 
     public enum GameMode {

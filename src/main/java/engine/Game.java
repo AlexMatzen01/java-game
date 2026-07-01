@@ -28,6 +28,9 @@ public final class Game {
     private boolean loadingWorld;
     private boolean namingWorld;
     private final StringBuilder worldNameInput = new StringBuilder();
+    private boolean chatOpen;
+    private final StringBuilder chatInput = new StringBuilder();
+    private final java.util.List<ChatMessage> chatMessages = new java.util.ArrayList<>();
     private List<WorldManager.WorldSlot> worlds = List.of();
     private int selectedWorldIndex;
 
@@ -82,7 +85,7 @@ public final class Game {
             } else {
                 world.tick(player.camera().position(), graphicsSettings.renderDistanceChunks());
                 handleGraphicsGuiInput();
-                if (!graphicsGuiOpen) {
+                if (!graphicsGuiOpen && !chatOpen) {
                     player.update(world, input, (float) deltaSeconds);
                     player.handleBlockActions(world, input);
                     if (particleSystem != null) {
@@ -93,12 +96,38 @@ public final class Game {
             }
 
             if (input.consumeKeyPressed(GLFW.GLFW_KEY_ESCAPE)) {
-                if (graphicsGuiOpen) {
+                if (chatOpen) {
+                    chatInput.setLength(0);
+                    setChatOpen(false);
+                } else if (graphicsGuiOpen) {
                     setGraphicsGuiOpen(false);
                 } else if (menuOpen) {
                     GLFW.glfwSetWindowShouldClose(window.handle(), true);
                 } else {
                     setMenuOpen(true);
+                }
+            }
+
+            if (!menuOpen && !graphicsGuiOpen && !chatOpen && input.consumeKeyPressed(GLFW.GLFW_KEY_F5)) {
+                setChatOpen(true);
+            }
+
+            if (chatOpen) {
+                String typed = input.consumeTypedChars();
+                for (int i = 0; i < typed.length(); i++) {
+                    char c = typed.charAt(i);
+                    if (c >= 32 && c <= 126) chatInput.append(c);
+                }
+                if (input.consumeKeyPressed(GLFW.GLFW_KEY_BACKSPACE) && chatInput.length() > 0) {
+                    chatInput.setLength(chatInput.length() - 1);
+                }
+                if (input.consumeKeyPressed(GLFW.GLFW_KEY_ENTER)) {
+                    String msg = chatInput.toString().trim();
+                    if (!msg.isEmpty()) {
+                        processChatMessage(msg);
+                    }
+                    chatInput.setLength(0);
+                    setChatOpen(false);
                 }
             }
 
@@ -114,7 +143,10 @@ public final class Game {
                     selectedWorldIndex,
                     loadingWorld,
                     namingWorld,
-                    worldNameInput.toString()
+                    worldNameInput.toString(),
+                    chatOpen,
+                    chatMessages,
+                    chatInput.toString()
             );
 
             if (targetFrameSeconds > 0.0) {
@@ -236,13 +268,68 @@ public final class Game {
         input.setCursorLocked(true);
     }
 
+    private void processChatMessage(String msg) {
+        chatMessages.add(new ChatMessage(msg));
+        if (chatMessages.size() > 50) {
+            chatMessages.remove(0);
+        }
+        if (msg.startsWith("/tp ")) {
+            String[] parts = msg.substring(4).trim().split("\\s+");
+            if (parts.length >= 3) {
+                try {
+                    float x = Float.parseFloat(parts[0]);
+                    float y = Float.parseFloat(parts[1]);
+                    float z = Float.parseFloat(parts[2]);
+                    player.teleport(x, y, z);
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        } else if (msg.startsWith("/time ")) {
+            String arg = msg.substring(6).trim().toLowerCase();
+            double cs = 1440.0;
+            double target;
+            switch (arg) {
+                case "noon" -> target = cs * 0.0;
+                case "sunset" -> target = cs * 0.25;
+                case "midnight" -> target = cs * 0.5;
+                case "sunrise" -> target = cs * 0.75;
+                case "day" -> target = 0.0;
+                case "night" -> target = cs * 0.5;
+                default -> {
+                    try {
+                        int h = Integer.parseInt(arg);
+                        if (h < 0 || h > 23) return;
+                        double hoursProgress = ((h - 12.0 + 24.0) % 24.0) / 24.0;
+                        target = cs * hoursProgress;
+                    } catch (NumberFormatException ignored) {
+                        return;
+                    }
+                }
+            }
+            ticks.setCycleSeconds(target);
+            double clockHours = (target / cs * 24.0 + 12.0) % 24.0;
+            int hours = (int) clockHours;
+            int minutes = (int) ((clockHours - hours) * 60.0);
+            String timeStr = String.format("%02d:%02d", hours, minutes);
+            chatMessages.add(new ChatMessage("Time set to " + timeStr));
+            if (chatMessages.size() > 50) {
+                chatMessages.remove(0);
+            }
+        }
+    }
+
     private void setGraphicsGuiOpen(boolean open) {
         graphicsGuiOpen = open;
-        input.setCursorLocked(!open && !menuOpen);
+        input.setCursorLocked(!open && !menuOpen && !chatOpen);
     }
 
     private void setMenuOpen(boolean open) {
         menuOpen = open;
-        input.setCursorLocked(!open && !graphicsGuiOpen);
+        input.setCursorLocked(!open && !graphicsGuiOpen && !chatOpen);
+    }
+
+    private void setChatOpen(boolean open) {
+        chatOpen = open;
+        input.setCursorLocked(!open && !graphicsGuiOpen && !menuOpen);
     }
 }

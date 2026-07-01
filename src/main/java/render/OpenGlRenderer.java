@@ -39,6 +39,8 @@ import static org.lwjgl.opengl.GL11C.GL_NONE;
 import static org.lwjgl.opengl.GL11C.GL_ONE;
 import static org.lwjgl.opengl.GL11C.GL_ONE_MINUS_SRC_ALPHA;
 import static org.lwjgl.opengl.GL11C.GL_POLYGON_OFFSET_FILL;
+import static org.lwjgl.opengl.GL11C.GL_RED;
+import static org.lwjgl.opengl.GL11C.GL_REPEAT;
 import static org.lwjgl.opengl.GL11C.GL_RGB;
 import static org.lwjgl.opengl.GL11C.GL_RGBA;
 import static org.lwjgl.opengl.GL11C.GL_RGBA8;
@@ -56,6 +58,7 @@ import static org.lwjgl.opengl.GL11C.GL_UNSIGNED_INT;
 import static org.lwjgl.opengl.GL11C.glBindTexture;
 import static org.lwjgl.opengl.GL11C.glBlendFunc;
 import static org.lwjgl.opengl.GL11C.glClear;
+import static org.lwjgl.opengl.GL11C.glClearColor;
 import static org.lwjgl.opengl.GL11C.glCullFace;
 import static org.lwjgl.opengl.GL11C.glDeleteTextures;
 import static org.lwjgl.opengl.GL11C.glDepthMask;
@@ -83,6 +86,7 @@ import static org.lwjgl.opengl.GL13C.GL_TEXTURE1;
 import static org.lwjgl.opengl.GL13C.GL_TEXTURE2;
 import static org.lwjgl.opengl.GL13C.GL_TEXTURE3;
 import static org.lwjgl.opengl.GL13C.GL_TEXTURE4;
+import static org.lwjgl.opengl.GL13C.GL_TEXTURE7;
 import static org.lwjgl.opengl.GL13C.glActiveTexture;
 import static org.lwjgl.opengl.GL14C.GL_DEPTH_COMPONENT24;
 import static org.lwjgl.opengl.GL15C.GL_ARRAY_BUFFER;
@@ -93,6 +97,7 @@ import static org.lwjgl.opengl.GL15C.glBindBuffer;
 import static org.lwjgl.opengl.GL15C.glBufferData;
 import static org.lwjgl.opengl.GL15C.glDeleteBuffers;
 import static org.lwjgl.opengl.GL15C.glGenBuffers;
+import static org.lwjgl.opengl.GL15C.glBufferSubData;
 import static org.lwjgl.opengl.GL20C.GL_COMPILE_STATUS;
 import static org.lwjgl.opengl.GL20C.GL_FRAGMENT_SHADER;
 import static org.lwjgl.opengl.GL20C.GL_LINK_STATUS;
@@ -116,22 +121,38 @@ import static org.lwjgl.opengl.GL20C.glUniform1fv;
 import static org.lwjgl.opengl.GL20C.glUniform1i;
 import static org.lwjgl.opengl.GL20C.glUniform2f;
 import static org.lwjgl.opengl.GL20C.glUniform3f;
+import static org.lwjgl.opengl.GL20C.glUniform3i;
 import static org.lwjgl.opengl.GL20C.glUniformMatrix4fv;
 import static org.lwjgl.opengl.GL20C.glUseProgram;
 import static org.lwjgl.opengl.GL20C.glVertexAttribPointer;
+import static org.lwjgl.opengl.GL30C.GL_COLOR_ATTACHMENT0;
 import static org.lwjgl.opengl.GL30C.GL_DEPTH_ATTACHMENT;
 import static org.lwjgl.opengl.GL30C.GL_FRAMEBUFFER;
 import static org.lwjgl.opengl.GL30C.GL_FRAMEBUFFER_COMPLETE;
 import static org.lwjgl.opengl.GL30C.GL_RGB16F;
+import static org.lwjgl.opengl.GL30C.GL_RGBA16F;
 import static org.lwjgl.opengl.GL30C.GL_TEXTURE_2D_ARRAY;
 import static org.lwjgl.opengl.GL30C.glBindFramebuffer;
 import static org.lwjgl.opengl.GL30C.glBindVertexArray;
+import static org.lwjgl.opengl.GL30C.GL_DRAW_FRAMEBUFFER;
+import static org.lwjgl.opengl.GL30C.GL_READ_FRAMEBUFFER;
+import static org.lwjgl.opengl.GL30C.glBlitFramebuffer;
 import static org.lwjgl.opengl.GL30C.glCheckFramebufferStatus;
 import static org.lwjgl.opengl.GL30C.glDeleteFramebuffers;
+import static org.lwjgl.opengl.GL30C.glDeleteRenderbuffers;
 import static org.lwjgl.opengl.GL30C.glDeleteVertexArrays;
+import static org.lwjgl.opengl.GL30C.glFramebufferTexture2D;
 import static org.lwjgl.opengl.GL30C.glFramebufferTextureLayer;
 import static org.lwjgl.opengl.GL30C.glGenFramebuffers;
 import static org.lwjgl.opengl.GL30C.glGenVertexArrays;
+import static org.lwjgl.opengl.GL30C.glBindBufferBase;
+import static org.lwjgl.opengl.GL42C.GL_WRITE_ONLY;
+import static org.lwjgl.opengl.GL42C.glBindImageTexture;
+import static org.lwjgl.opengl.GL43C.GL_ALL_BARRIER_BITS;
+import static org.lwjgl.opengl.GL43C.GL_COMPUTE_SHADER;
+import static org.lwjgl.opengl.GL43C.GL_SHADER_STORAGE_BUFFER;
+import static org.lwjgl.opengl.GL43C.glDispatchCompute;
+import static org.lwjgl.opengl.GL43C.glMemoryBarrier;
 import org.lwjgl.stb.STBImage;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
@@ -163,7 +184,7 @@ public final class OpenGlRenderer {
     private static final int PROBE_GRID_Y = 10;
     private static final int PROBE_GRID_Z = 20;
     private static final float PROBE_CELL_SIZE = 8.0f;
-    private static final int PROBE_UPDATES_PER_FRAME = 1200;
+    private static final int PROBE_UPDATES_PER_FRAME = 1600;
 
     private final engine.Window window;
     private final GameOptions options;
@@ -178,6 +199,7 @@ public final class OpenGlRenderer {
 
     public void setParticleSystem(ParticleSystem particleSystem) {
         this.particleSystem = particleSystem;
+        particleSystem.setGpuMode(true);
     }
 
     private int worldProgram;
@@ -200,7 +222,6 @@ public final class OpenGlRenderer {
         private int worldShadowStrengthLocation;
         private int worldShadowFilterRadiusLocation;
         private int worldRealisticLightingLocation;
-    private int worldFogDensityLocation;
 
     private int shadowProgram;
     private int shadowMvpLocation;
@@ -220,7 +241,6 @@ public final class OpenGlRenderer {
     private int skySunTextureLocation;
     private int skyMoonTextureLocation;
     private int skyCameraPosLocation;
-    private int skyCloudTimeLocation;
     private int skyViewRightLocation;
     private int skyViewUpLocation;
     private int skyViewForwardLocation;
@@ -228,25 +248,74 @@ public final class OpenGlRenderer {
     private int skyHScreenScaleLocation;
     private int skyVScreenScaleLocation;
 
-    private int volumetricProgram;
-    private int volumetricCameraPosLocation;
-    private int volumetricViewRightLocation;
-    private int volumetricViewUpLocation;
-    private int volumetricViewForwardLocation;
-    private int volumetricLightDirLocation;
-    private int volumetricLightColorLocation;
-    private int volumetricLightIntensityLocation;
-    private int volumetricShadowMapLocation;
-    private final int[] volumetricLightMvpLocations = new int[CASCADE_COUNT];
-    private int volumetricCascadeSplitsLocation;
-    private int volumetricShadowTexelSizeLocation;
-    private int volumetricHScreenScaleLocation;
-    private int volumetricVScreenScaleLocation;
+    private int froxelAccumProgram;
+    private int froxelCompositeProgram;
+    private int[] froxelTex = new int[2];
+    private int froxelActiveIndex;
+    private int froxelWidth;
+    private int froxelHeight;
+    private int froxelDepth;
+    private int currentFroxelQuality = -1;
+    private int volumetricFrameCount;
+
+    private int froxelGridSizeLocation;
+    private int froxelCameraPosLocation;
+    private int froxelViewRightLocation;
+    private int froxelViewUpLocation;
+    private int froxelViewForwardLocation;
+    private int froxelNearFarLocation;
+    private int froxelScreenScaleLocation;
+    private int froxelLightDirLocation;
+    private int froxelLightColorLocation;
+    private int froxelLightIntensityLocation;
+    private int froxelShadowMapLocation;
+    private final int[] froxelLightMvpLocations = new int[CASCADE_COUNT];
+    private int froxelCascadeSplitsLocation;
+    private int froxelShadowTexelSizeLocation;
+
+    private int froxelCompVolumeLocation;
+    private int froxelCompPrevVolumeLocation;
+    private int froxelCompDepthLocation;
+    private int froxelCompCameraPosLocation;
+    private int froxelCompViewRightLocation;
+    private int froxelCompViewUpLocation;
+    private int froxelCompViewForwardLocation;
+    private int froxelCompNearFarLocation;
+    private int froxelCompScreenScaleLocation;
+    private int froxelCompPrevViewProjLocation;
+    private int froxelCompGridSizeLocation;
+
+    private final Matrix4f prevViewProj = new Matrix4f();
 
     private int outlineProgram;
     private int outlineVao;
     private int outlineVbo;
     private int outlineMvpLocation;
+
+    private int cloudProgram;
+    private int cloudCameraPosLocation;
+    private int cloudViewRightLocation;
+    private int cloudViewUpLocation;
+    private int cloudViewForwardLocation;
+    private int cloudHScreenScaleLocation;
+    private int cloudVScreenScaleLocation;
+    private int cloudSunDirLocation;
+    private int cloudSunColorLocation;
+    private int cloudTimeLocation;
+    private int cloudCoverageLocation;
+    private int cloudBaseAltLocation;
+    private int cloudTopAltLocation;
+    private int cloudWindDirLocation;
+    private int cloudWindSpeedLocation;
+
+    private int cloudFbo;
+    private int cloudColorTex;
+    private int cloudBackupFbo;
+    private int cloudBackupTex;
+
+    private int compositeProgram;
+    private int compositeSkyTexLocation;
+    private int compositeCloudTexLocation;
 
     private int hudProgram;
     private int hudVao;
@@ -267,11 +336,30 @@ public final class OpenGlRenderer {
     private int fallingBlockVbo;
     private int fallingBlockEbo;
 
+    private int particleComputeProgram;
+    private int particleComputeDeltaLocation;
+    private int particleRenderProgram;
+    private int particleRenderMvpLocation;
+    private int particleRenderCameraRightLocation;
+    private int particleRenderCameraUpLocation;
+    private int particleRenderTileULocation;
+    private int particleRenderTileVLocation;
+    private int particleRenderLightDirLocation;
+    private int particleRenderLightColorLocation;
+    private int particleRenderLightIntensityLocation;
+    private int particleSsbo;
+    private int gpuParticleCount;
+    private static final int MAX_GPU_PARTICLES = 8192;
+    private static final int PARTICLE_STRIDE = 12;
+    private double lastParticleFrameTime;
+
     private int textProgram;
     private int textVao;
     private int textVbo;
     private int textTexture;
     private int textScreenSizeLocation;
+    private int textAlphaLocation;
+    private float textAlpha = 1.0f;
     private final TextGlyph[] textGlyphs = new TextGlyph[127];
     private float textBaseFontSize;
     private float textAscent;
@@ -285,10 +373,25 @@ public final class OpenGlRenderer {
             PROBE_CELL_SIZE * (PROBE_GRID_Z - 1)
         );
         private int probeUpdateCursor;
+    private int probeShiftCooldown;
 
     private double fpsSampleTime = GLFW.glfwGetTime();
     private int fpsSampleFrames;
     private int displayedFps;
+
+    private int mainFbo;
+    private int mainColorTex;
+    private int mainDepthRbo;
+
+    private int outputProgram;
+    private int outputTexLocation;
+    private int outputUseTonemapLocation;
+    private int outputContrastLocation;
+    private int outputExposureLocation;
+
+    private final Matrix4f currentProj = new Matrix4f();
+    private final Matrix4f currentView = new Matrix4f();
+    private final Matrix4f jitteredViewProj = new Matrix4f();
 
     public OpenGlRenderer(engine.Window window, GameOptions options) {
         this.window = window;
@@ -339,7 +442,6 @@ public final class OpenGlRenderer {
         worldShadowStrengthLocation = glGetUniformLocation(worldProgram, "uShadowStrength");
         worldShadowFilterRadiusLocation = glGetUniformLocation(worldProgram, "uShadowFilterRadius");
         worldRealisticLightingLocation = glGetUniformLocation(worldProgram, "uRealisticLighting");
-        worldFogDensityLocation = glGetUniformLocation(worldProgram, "uFogDensity");
 
         skyProgram = createSkyProgram();
         skyTopColorLocation = glGetUniformLocation(skyProgram, "uTopColor");
@@ -351,7 +453,6 @@ public final class OpenGlRenderer {
         skySunTextureLocation = glGetUniformLocation(skyProgram, "uSunTex");
         skyMoonTextureLocation = glGetUniformLocation(skyProgram, "uMoonTex");
         skyCameraPosLocation = glGetUniformLocation(skyProgram, "uCameraPos");
-        skyCloudTimeLocation = glGetUniformLocation(skyProgram, "uCloudTime");
         skyViewRightLocation = glGetUniformLocation(skyProgram, "uViewRight");
         skyViewUpLocation = glGetUniformLocation(skyProgram, "uViewUp");
         skyViewForwardLocation = glGetUniformLocation(skyProgram, "uViewForward");
@@ -360,22 +461,52 @@ public final class OpenGlRenderer {
         skyVScreenScaleLocation = glGetUniformLocation(skyProgram, "uVScreenScale");
         createSkyGeometry();
 
-        volumetricProgram = createVolumetricProgram();
-        volumetricCameraPosLocation = glGetUniformLocation(volumetricProgram, "uCameraPos");
-        volumetricViewRightLocation = glGetUniformLocation(volumetricProgram, "uViewRight");
-        volumetricViewUpLocation = glGetUniformLocation(volumetricProgram, "uViewUp");
-        volumetricViewForwardLocation = glGetUniformLocation(volumetricProgram, "uViewForward");
-        volumetricLightDirLocation = glGetUniformLocation(volumetricProgram, "uLightDir");
-        volumetricLightColorLocation = glGetUniformLocation(volumetricProgram, "uLightColor");
-        volumetricLightIntensityLocation = glGetUniformLocation(volumetricProgram, "uLightIntensity");
-        volumetricShadowMapLocation = glGetUniformLocation(volumetricProgram, "uShadowMap");
+        froxelAccumProgram = createFroxelAccumProgram();
+        froxelGridSizeLocation = glGetUniformLocation(froxelAccumProgram, "uGridSize");
+        froxelCameraPosLocation = glGetUniformLocation(froxelAccumProgram, "uCameraPos");
+        froxelViewRightLocation = glGetUniformLocation(froxelAccumProgram, "uViewRight");
+        froxelViewUpLocation = glGetUniformLocation(froxelAccumProgram, "uViewUp");
+        froxelViewForwardLocation = glGetUniformLocation(froxelAccumProgram, "uViewForward");
+        froxelNearFarLocation = glGetUniformLocation(froxelAccumProgram, "uNearFar");
+        froxelScreenScaleLocation = glGetUniformLocation(froxelAccumProgram, "uScreenScale");
+        froxelLightDirLocation = glGetUniformLocation(froxelAccumProgram, "uLightDir");
+        froxelLightColorLocation = glGetUniformLocation(froxelAccumProgram, "uLightColor");
+        froxelLightIntensityLocation = glGetUniformLocation(froxelAccumProgram, "uLightIntensity");
+        froxelShadowMapLocation = glGetUniformLocation(froxelAccumProgram, "uShadowMap");
         for (int i = 0; i < CASCADE_COUNT; i++) {
-            volumetricLightMvpLocations[i] = glGetUniformLocation(volumetricProgram, "uLightMvp[" + i + "]");
+            froxelLightMvpLocations[i] = glGetUniformLocation(froxelAccumProgram, "uLightMvp[" + i + "]");
         }
-        volumetricCascadeSplitsLocation = glGetUniformLocation(volumetricProgram, "uCascadeSplits");
-        volumetricShadowTexelSizeLocation = glGetUniformLocation(volumetricProgram, "uShadowTexelSize");
-        volumetricHScreenScaleLocation = glGetUniformLocation(volumetricProgram, "uHScreenScale");
-        volumetricVScreenScaleLocation = glGetUniformLocation(volumetricProgram, "uVScreenScale");
+        froxelCascadeSplitsLocation = glGetUniformLocation(froxelAccumProgram, "uCascadeSplits");
+        froxelShadowTexelSizeLocation = glGetUniformLocation(froxelAccumProgram, "uShadowTexelSize");
+
+        froxelCompositeProgram = createFroxelCompositeProgram();
+        froxelCompVolumeLocation = glGetUniformLocation(froxelCompositeProgram, "uFroxelTex");
+        froxelCompPrevVolumeLocation = glGetUniformLocation(froxelCompositeProgram, "uPrevFroxelTex");
+        froxelCompDepthLocation = glGetUniformLocation(froxelCompositeProgram, "uDepthTex");
+        froxelCompCameraPosLocation = glGetUniformLocation(froxelCompositeProgram, "uCameraPos");
+        froxelCompViewRightLocation = glGetUniformLocation(froxelCompositeProgram, "uViewRight");
+        froxelCompViewUpLocation = glGetUniformLocation(froxelCompositeProgram, "uViewUp");
+        froxelCompViewForwardLocation = glGetUniformLocation(froxelCompositeProgram, "uViewForward");
+        froxelCompNearFarLocation = glGetUniformLocation(froxelCompositeProgram, "uNearFar");
+        froxelCompScreenScaleLocation = glGetUniformLocation(froxelCompositeProgram, "uScreenScale");
+        froxelCompPrevViewProjLocation = glGetUniformLocation(froxelCompositeProgram, "uPrevViewProj");
+        froxelCompGridSizeLocation = glGetUniformLocation(froxelCompositeProgram, "uGridSize");
+
+        cloudProgram = createCloudProgram();
+        cloudCameraPosLocation = glGetUniformLocation(cloudProgram, "uCameraPos");
+        cloudViewRightLocation = glGetUniformLocation(cloudProgram, "uViewRight");
+        cloudViewUpLocation = glGetUniformLocation(cloudProgram, "uViewUp");
+        cloudViewForwardLocation = glGetUniformLocation(cloudProgram, "uViewForward");
+        cloudHScreenScaleLocation = glGetUniformLocation(cloudProgram, "uHScreenScale");
+        cloudVScreenScaleLocation = glGetUniformLocation(cloudProgram, "uVScreenScale");
+        cloudSunDirLocation = glGetUniformLocation(cloudProgram, "uSunDir");
+        cloudSunColorLocation = glGetUniformLocation(cloudProgram, "uSunColor");
+        cloudTimeLocation = glGetUniformLocation(cloudProgram, "uTime");
+        cloudCoverageLocation = glGetUniformLocation(cloudProgram, "uCoverage");
+        cloudBaseAltLocation = glGetUniformLocation(cloudProgram, "uBaseAlt");
+        cloudTopAltLocation = glGetUniformLocation(cloudProgram, "uTopAlt");
+        cloudWindDirLocation = glGetUniformLocation(cloudProgram, "uWindDir");
+        cloudWindSpeedLocation = glGetUniformLocation(cloudProgram, "uWindSpeed");
 
         outlineProgram = createOutlineProgram();
         outlineMvpLocation = glGetUniformLocation(outlineProgram, "uMvp");
@@ -392,6 +523,7 @@ public final class OpenGlRenderer {
         textTexture = createTextTexture();
         textProgram = createTextProgram();
         textScreenSizeLocation = glGetUniformLocation(textProgram, "uScreenSize");
+        textAlphaLocation = glGetUniformLocation(textProgram, "uAlpha");
         int textFontLocation = glGetUniformLocation(textProgram, "uFont");
         glUseProgram(textProgram);
         glUniform1i(textFontLocation, 0);
@@ -407,21 +539,25 @@ public final class OpenGlRenderer {
         glEnableVertexAttribArray(1);
         glBindVertexArray(0);
 
-        particleProgram = createParticleProgram();
-        particleMvpLocation = glGetUniformLocation(particleProgram, "uMvp");
-        particleAtlasLocation = glGetUniformLocation(particleProgram, "uAtlas");
+        particleComputeProgram = createComputeProgram(PARTICLE_COMPUTE_SOURCE);
+        particleComputeDeltaLocation = glGetUniformLocation(particleComputeProgram, "uDelta");
+        particleRenderProgram = createParticleRenderProgram();
+        particleRenderMvpLocation = glGetUniformLocation(particleRenderProgram, "uMvp");
+        particleRenderCameraRightLocation = glGetUniformLocation(particleRenderProgram, "uCameraRight");
+        particleRenderCameraUpLocation = glGetUniformLocation(particleRenderProgram, "uCameraUp");
+        particleRenderTileULocation = glGetUniformLocation(particleRenderProgram, "uTileU");
+        particleRenderTileVLocation = glGetUniformLocation(particleRenderProgram, "uTileV");
+        particleRenderLightDirLocation = glGetUniformLocation(particleRenderProgram, "uLightDir");
+        particleRenderLightColorLocation = glGetUniformLocation(particleRenderProgram, "uLightColor");
+        particleRenderLightIntensityLocation = glGetUniformLocation(particleRenderProgram, "uLightIntensity");
+        int particleRenderAtlasLoc = glGetUniformLocation(particleRenderProgram, "uAtlas");
+        glUseProgram(particleRenderProgram);
+        glUniform1i(particleRenderAtlasLoc, 0);
+        glUseProgram(0);
         particleVao = glGenVertexArrays();
-        particleVbo = glGenBuffers();
-        glBindVertexArray(particleVao);
-        glBindBuffer(GL_ARRAY_BUFFER, particleVbo);
-        glBufferData(GL_ARRAY_BUFFER, 0L, GL_DYNAMIC_DRAW);
-        glVertexAttribPointer(0, 3, GL_FLOAT, false, 6 * Float.BYTES, 0L);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(1, 2, GL_FLOAT, false, 6 * Float.BYTES, 3L * Float.BYTES);
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(2, 1, GL_FLOAT, false, 6 * Float.BYTES, 5L * Float.BYTES);
-        glEnableVertexAttribArray(2);
-        glBindVertexArray(0);
+        createParticleSsbo();
+        lastParticleFrameTime = GLFW.glfwGetTime();
+        gpuParticleCount = 0;
 
         fallingBlockVao = glGenVertexArrays();
         fallingBlockVbo = glGenBuffers();
@@ -443,12 +579,31 @@ public final class OpenGlRenderer {
 
         createProbeResources();
 
+        mainFbo = 0;
+        mainColorTex = 0;
+        mainDepthRbo = 0;
+        createMainFbo();
+        createCloudFbos();
+        froxelActiveIndex = 0;
+        volumetricFrameCount = 0;
+
+        outputProgram = createOutputProgram();
+        outputTexLocation = glGetUniformLocation(outputProgram, "uTex");
+        outputUseTonemapLocation = glGetUniformLocation(outputProgram, "uUseTonemap");
+        outputContrastLocation = glGetUniformLocation(outputProgram, "uContrast");
+        outputExposureLocation = glGetUniformLocation(outputProgram, "uExposure");
+
+        compositeProgram = createCompositeProgram();
+        compositeSkyTexLocation = glGetUniformLocation(compositeProgram, "uSkyTex");
+        compositeCloudTexLocation = glGetUniformLocation(compositeProgram, "uCloudTex");
+
         glViewport(0, 0, window.width(), window.height());
     }
 
-    public void render(World world, Player player, TickSystem ticks, boolean resized, GraphicsSettings graphicsSettings, boolean graphicsGuiOpen, boolean menuOpen, List<engine.WorldManager.WorldSlot> worlds, int selectedWorldIndex, boolean loadingWorld, boolean namingWorld, String worldNameInput) {
+    public void render(World world, Player player, TickSystem ticks, boolean resized, GraphicsSettings graphicsSettings, boolean graphicsGuiOpen, boolean menuOpen, List<engine.WorldManager.WorldSlot> worlds, int selectedWorldIndex, boolean loadingWorld, boolean namingWorld, String worldNameInput, boolean chatOpen, List<engine.ChatMessage> chatMessages, String chatInput) {
         if (resized) {
             glViewport(0, 0, window.width(), window.height());
+            resizeFbos();
         }
 
         if (!menuOpen && world != null && player != null) {
@@ -465,20 +620,45 @@ public final class OpenGlRenderer {
 
             renderShadowMaps();
 
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glBindFramebuffer(GL_FRAMEBUFFER, mainFbo);
             glViewport(0, 0, window.width(), window.height());
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+            currentView.set(player.viewMatrix());
+            float aspect = (float) window.width() / (float) window.height();
+            currentProj.identity().perspective((float) Math.toRadians(FIELD_OF_VIEW_DEGREES), aspect, NEAR_PLANE, FAR_PLANE);
+            prevViewProj.set(jitteredViewProj);
+            jitteredViewProj.set(currentProj).mul(currentView);
+
             renderSky(player, ticks, sunDirection, moonDirection, graphicsSettings);
+            renderClouds(player, ticks, sunDirection, graphicsSettings);
+            compositeClouds();
             renderWorld(world, player, sunDirection, moonDirection, graphicsSettings);
-            if (graphicsSettings.realisticLighting()) {
-                renderVolumetricLight(player, sunDirection, moonDirection);
+
+            if (graphicsSettings.realisticLighting() && graphicsSettings.volumetricQuality() > 0) {
+                renderVolumetricLight(player, sunDirection, moonDirection, graphicsSettings);
             }
             renderTargetOutline(world, player);
-            renderParticles(player);
+
+            float pSunBlend = sunStrength / Math.max(sunStrength + moonStrength, 0.0001f);
+            float pMoonBlend = 1.0f - pSunBlend;
+            float pLowSunWarmth = 1.0f - Math.min(1.0f, sunStrength * 2.2f);
+            float pLightR = (1.00f + pLowSunWarmth * 0.22f) * pSunBlend + 0.56f * pMoonBlend;
+            float pLightG = (0.96f - pLowSunWarmth * 0.12f) * pSunBlend + 0.66f * pMoonBlend;
+            float pLightB = (0.86f - pLowSunWarmth * 0.26f) * pSunBlend + 1.00f * pMoonBlend;
+            float pLightIntensity = sunStrength * 0.92f + moonStrength * 0.16f;
+            renderParticles(player, activeLightDirection, pLightR, pLightG, pLightB, pLightIntensity);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(0, 0, window.width(), window.height());
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            renderOutput(graphicsSettings.contrast(), graphicsSettings.exposure());
+
             renderHotbar(player);
             renderCrosshair();
             renderFpsCounter();
+            renderCoordinates(player);
+            renderChat(chatMessages, chatInput, chatOpen);
         } else {
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             glViewport(0, 0, window.width(), window.height());
@@ -509,6 +689,19 @@ public final class OpenGlRenderer {
         if (shadowFbo != 0) {
             glDeleteFramebuffers(shadowFbo);
             shadowFbo = 0;
+        }
+
+        if (mainColorTex != 0) {
+            glDeleteTextures(mainColorTex);
+            mainColorTex = 0;
+        }
+        if (mainDepthRbo != 0) {
+            glDeleteRenderbuffers(mainDepthRbo);
+            mainDepthRbo = 0;
+        }
+        if (mainFbo != 0) {
+            glDeleteFramebuffers(mainFbo);
+            mainFbo = 0;
         }
 
         if (skyVbo != 0) {
@@ -550,9 +743,47 @@ public final class OpenGlRenderer {
             glDeleteProgram(skyProgram);
             skyProgram = 0;
         }
-        if (volumetricProgram != 0) {
-            glDeleteProgram(volumetricProgram);
-            volumetricProgram = 0;
+        if (froxelAccumProgram != 0) {
+            glDeleteProgram(froxelAccumProgram);
+            froxelAccumProgram = 0;
+        }
+        if (froxelCompositeProgram != 0) {
+            glDeleteProgram(froxelCompositeProgram);
+            froxelCompositeProgram = 0;
+        }
+        for (int i = 0; i < 2; i++) {
+            if (froxelTex[i] != 0) {
+                glDeleteTextures(froxelTex[i]);
+                froxelTex[i] = 0;
+            }
+        }
+        if (cloudProgram != 0) {
+            glDeleteProgram(cloudProgram);
+            cloudProgram = 0;
+        }
+        if (compositeProgram != 0) {
+            glDeleteProgram(compositeProgram);
+            compositeProgram = 0;
+        }
+        if (cloudColorTex != 0) {
+            glDeleteTextures(cloudColorTex);
+            cloudColorTex = 0;
+        }
+        if (cloudBackupTex != 0) {
+            glDeleteTextures(cloudBackupTex);
+            cloudBackupTex = 0;
+        }
+        if (cloudFbo != 0) {
+            glDeleteFramebuffers(cloudFbo);
+            cloudFbo = 0;
+        }
+        if (cloudBackupFbo != 0) {
+            glDeleteFramebuffers(cloudBackupFbo);
+            cloudBackupFbo = 0;
+        }
+        if (outputProgram != 0) {
+            glDeleteProgram(outputProgram);
+            outputProgram = 0;
         }
         if (outlineProgram != 0) {
             glDeleteProgram(outlineProgram);
@@ -581,6 +812,18 @@ public final class OpenGlRenderer {
         if (particleProgram != 0) {
             glDeleteProgram(particleProgram);
             particleProgram = 0;
+        }
+        if (particleComputeProgram != 0) {
+            glDeleteProgram(particleComputeProgram);
+            particleComputeProgram = 0;
+        }
+        if (particleRenderProgram != 0) {
+            glDeleteProgram(particleRenderProgram);
+            particleRenderProgram = 0;
+        }
+        if (particleSsbo != 0) {
+            glDeleteBuffers(particleSsbo);
+            particleSsbo = 0;
         }
         if (fallingBlockEbo != 0) {
             glDeleteBuffers(fallingBlockEbo);
@@ -661,10 +904,7 @@ public final class OpenGlRenderer {
     }
 
     private void renderWorld(World world, Player player, Vector3f sunDirection, Vector3f moonDirection, GraphicsSettings graphicsSettings) {
-        float aspect = (float) window.width() / (float) window.height();
-        Matrix4f mvp = new Matrix4f()
-                .perspective((float) Math.toRadians(FIELD_OF_VIEW_DEGREES), aspect, NEAR_PLANE, FAR_PLANE)
-                .mul(player.viewMatrix());
+        Matrix4f mvp = new Matrix4f(jitteredViewProj);
         Vector3f cameraPos = player.eyePosition(new Vector3f());
         float sunStrength = sunStrength(sunDirection);
         float moonStrength = moonStrength(sunDirection);
@@ -704,7 +944,6 @@ public final class OpenGlRenderer {
         glUniform1f(worldShadowStrengthLocation, graphicsSettings.shadowStrength());
         glUniform1i(worldShadowFilterRadiusLocation, graphicsSettings.shadowFilterRadius());
         glUniform1i(worldRealisticLightingLocation, graphicsSettings.realisticLighting() ? 1 : 0);
-        glUniform1f(worldFogDensityLocation, graphicsSettings.fogDensity());
 
         try (MemoryStack stack = MemoryStack.stackPush()) {
             FloatBuffer mvpBuffer = stack.mallocFloat(16);
@@ -886,7 +1125,6 @@ public final class OpenGlRenderer {
         glUniform3f(skyMoonDirLocation, moonDirection.x, moonDirection.y, moonDirection.z);
         glUniform3f(skyMoonColorLocation, 0.62f * moonIntensity, 0.68f * moonIntensity, 0.86f * moonIntensity);
         glUniform3f(skyCameraPosLocation, cameraPos.x, cameraPos.y, cameraPos.z);
-        glUniform1f(skyCloudTimeLocation, (float) GLFW.glfwGetTime());
         glUniform3f(skyViewRightLocation, right.x, right.y, right.z);
         glUniform3f(skyViewUpLocation, up.x, up.y, up.z);
         glUniform3f(skyViewForwardLocation, forward.x, forward.y, forward.z);
@@ -916,69 +1154,238 @@ public final class OpenGlRenderer {
         glEnable(GL_CULL_FACE);
     }
 
-    private void renderVolumetricLight(Player player, Vector3f sunDirection, Vector3f moonDirection) {
-        float sunStrength = sunStrength(sunDirection);
-        float moonStrength = moonStrength(sunDirection);
-        Vector3f lightDirection = sunStrength >= moonStrength ? sunDirection : moonDirection;
-        float intensity = sunStrength >= moonStrength ? sunStrength * 0.42f : moonStrength * 0.10f;
-        if (intensity <= 0.01f) {
-            return;
-        }
-
+    private void renderClouds(Player player, TickSystem ticks, Vector3f sunDirection, GraphicsSettings graphicsSettings) {
         Vector3f forward = player.lookDirection(new Vector3f());
         Vector3f right = player.camera().right(new Vector3f());
         Vector3f up = new Vector3f(right).cross(forward).normalize();
         Vector3f cameraPos = player.eyePosition(new Vector3f());
 
-        float sunBlend = sunStrength / Math.max(sunStrength + moonStrength, 0.0001f);
-        float moonBlend = 1.0f - sunBlend;
-        float lightR = 1.00f * sunBlend + 0.50f * moonBlend;
-        float lightG = 0.92f * sunBlend + 0.60f * moonBlend;
-        float lightB = 0.74f * sunBlend + 1.00f * moonBlend;
+        float tanHalfFov = (float) Math.tan(Math.toRadians(FIELD_OF_VIEW_DEGREES * 0.5));
+        float aspect = (float) window.width() / (float) window.height();
+
+        int cw = Math.max(1, window.width() / 2);
+        int ch = Math.max(1, window.height() / 2);
+        glBindFramebuffer(GL_FRAMEBUFFER, cloudFbo);
+        glViewport(0, 0, cw, ch);
 
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
+        glDisable(GL_BLEND);
+
+        float sunStrength = sunStrength(sunDirection);
+        float sunIntensity = sunStrength * 1.4f;
+
+        glUseProgram(cloudProgram);
+        glUniform3f(cloudCameraPosLocation, cameraPos.x, cameraPos.y, cameraPos.z);
+        glUniform3f(cloudViewRightLocation, right.x, right.y, right.z);
+        glUniform3f(cloudViewUpLocation, up.x, up.y, up.z);
+        glUniform3f(cloudViewForwardLocation, forward.x, forward.y, forward.z);
+        glUniform1f(cloudHScreenScaleLocation, aspect * tanHalfFov);
+        glUniform1f(cloudVScreenScaleLocation, tanHalfFov);
+        glUniform3f(cloudSunDirLocation, sunDirection.x, sunDirection.y, sunDirection.z);
+        glUniform3f(cloudSunColorLocation, sunIntensity, 0.90f * sunIntensity, 0.18f * sunIntensity);
+        glUniform1f(cloudTimeLocation, (float) GLFW.glfwGetTime());
+
+        glUniform1f(cloudCoverageLocation, graphicsSettings.cloudCoverage());
+        glUniform1f(cloudBaseAltLocation, 120.0f);
+        glUniform1f(cloudTopAltLocation, 260.0f);
+        glUniform2f(cloudWindDirLocation, 0.7f, 0.3f);
+        glUniform1f(cloudWindSpeedLocation, 8.0f);
+
+        glBindVertexArray(skyVao);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+
         glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-        glUseProgram(volumetricProgram);
-        glUniform3f(volumetricCameraPosLocation, cameraPos.x, cameraPos.y, cameraPos.z);
-        glUniform3f(volumetricViewRightLocation, right.x, right.y, right.z);
-        glUniform3f(volumetricViewUpLocation, up.x, up.y, up.z);
-        glUniform3f(volumetricViewForwardLocation, forward.x, forward.y, forward.z);
+        glBindFramebuffer(GL_FRAMEBUFFER, mainFbo);
+        glViewport(0, 0, window.width(), window.height());
+    }
 
-        float tanHalfFov = (float) Math.tan(Math.toRadians(FIELD_OF_VIEW_DEGREES * 0.5));
-        float aspect = (float) window.width() / (float) window.height();
-        glUniform1f(volumetricHScreenScaleLocation, aspect * tanHalfFov);
-        glUniform1f(volumetricVScreenScaleLocation, tanHalfFov);
+    private void compositeClouds() {
+        int w = window.width();
+        int h = window.height();
 
-        glUniform3f(volumetricLightDirLocation, lightDirection.x, lightDirection.y, lightDirection.z);
-        glUniform3f(volumetricLightColorLocation, lightR, lightG, lightB);
-        glUniform1f(volumetricLightIntensityLocation, intensity);
-        glUniform1i(volumetricShadowMapLocation, 1);
-        glUniform1fv(volumetricCascadeSplitsLocation, CASCADE_SPLITS);
-        glUniform1f(volumetricShadowTexelSizeLocation, 1.0f / SHADOW_MAP_SIZE);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, mainFbo);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, cloudBackupFbo);
+        glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_LINEAR);
 
+        glBindFramebuffer(GL_FRAMEBUFFER, mainFbo);
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glDisable(GL_BLEND);
+
+        glUseProgram(compositeProgram);
+        glUniform1i(compositeSkyTexLocation, 0);
+        glUniform1i(compositeCloudTexLocation, 1);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, cloudBackupTex);
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, shadowDepthTexture);
-
-        try (MemoryStack stack = MemoryStack.stackPush()) {
-            FloatBuffer lightBuffer = stack.mallocFloat(16);
-            for (int i = 0; i < CASCADE_COUNT; i++) {
-                cascadeLightMvp[i].get(lightBuffer.clear());
-                glUniformMatrix4fv(volumetricLightMvpLocations[i], false, lightBuffer);
-            }
-        }
+        glBindTexture(GL_TEXTURE_2D, cloudColorTex);
 
         glBindVertexArray(skyVao);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         glBindVertexArray(0);
 
         glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+        glBindTexture(GL_TEXTURE_2D, 0);
         glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        glEnable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+    }
+
+    private void renderVolumetricLight(Player player, Vector3f sunDirection, Vector3f moonDirection, GraphicsSettings graphicsSettings) {
+        float sunStr = sunStrength(sunDirection);
+        float moonStr = moonStrength(sunDirection);
+        Vector3f lightDirection = sunStr >= moonStr ? sunDirection : moonDirection;
+        float intensity = sunStr >= moonStr ? sunStr * 0.50f : moonStr * 0.12f;
+        if (intensity <= 0.005f) {
+            return;
+        }
+
+        int quality = graphicsSettings.volumetricQuality();
+        ensureFroxelTextures(quality);
+
+        Vector3f forward = player.lookDirection(new Vector3f());
+        Vector3f right = player.camera().right(new Vector3f());
+        Vector3f up = new Vector3f(right).cross(forward).normalize();
+        Vector3f cameraPos = player.eyePosition(new Vector3f());
+
+        float sunBlend = sunStr / Math.max(sunStr + moonStr, 0.0001f);
+        float moonBlend = 1.0f - sunBlend;
+        float lightR = 1.00f * sunBlend + 0.50f * moonBlend;
+        float lightG = 0.92f * sunBlend + 0.60f * moonBlend;
+        float lightB = 0.74f * sunBlend + 1.00f * moonBlend;
+
+        float tanHalfFov = (float) Math.tan(Math.toRadians(FIELD_OF_VIEW_DEGREES * 0.5));
+        float aspect = (float) window.width() / (float) window.height();
+
+        // --- Stage 1: Populate + Integrate via Compute ---
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glDisable(GL_BLEND);
+
+        glUseProgram(froxelAccumProgram);
+        glUniform3f(froxelCameraPosLocation, cameraPos.x, cameraPos.y, cameraPos.z);
+        glUniform3f(froxelViewRightLocation, right.x, right.y, right.z);
+        glUniform3f(froxelViewUpLocation, up.x, up.y, up.z);
+        glUniform3f(froxelViewForwardLocation, forward.x, forward.y, forward.z);
+        glUniform2f(froxelNearFarLocation, NEAR_PLANE, FAR_PLANE);
+        glUniform2f(froxelScreenScaleLocation, aspect * tanHalfFov, tanHalfFov);
+        glUniform3f(froxelLightDirLocation, lightDirection.x, lightDirection.y, lightDirection.z);
+        glUniform3f(froxelLightColorLocation, lightR, lightG, lightB);
+        glUniform1f(froxelLightIntensityLocation, intensity);
+        glUniform1i(froxelShadowMapLocation, 1);
+        glUniform1fv(froxelCascadeSplitsLocation, CASCADE_SPLITS);
+        glUniform1f(froxelShadowTexelSizeLocation, 1.0f / SHADOW_MAP_SIZE);
+        glUniform3i(froxelGridSizeLocation, froxelWidth, froxelHeight, froxelDepth);
+
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            FloatBuffer lightBuffer = stack.mallocFloat(16);
+            for (int i = 0; i < CASCADE_COUNT; i++) {
+                cascadeLightMvp[i].get(lightBuffer.clear());
+                glUniformMatrix4fv(froxelLightMvpLocations[i], false, lightBuffer);
+            }
+        }
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, shadowDepthTexture);
+
+        int writeIdx = froxelActiveIndex;
+        glBindImageTexture(0, froxelTex[writeIdx], 0, true, 0, GL_WRITE_ONLY, GL_RGBA16F);
+
+        int groupsX = (froxelWidth + 7) / 8;
+        int groupsY = (froxelHeight + 7) / 8;
+        glDispatchCompute(groupsX, groupsY, 1);
+        glMemoryBarrier(GL_ALL_BARRIER_BITS);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+
+        // --- Stage 2: Composite with temporal reprojection ---
+        glBindFramebuffer(GL_FRAMEBUFFER, mainFbo);
+        glViewport(0, 0, window.width(), window.height());
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE);
+
+        glUseProgram(froxelCompositeProgram);
+        glUniform1i(froxelCompVolumeLocation, 0);
+        glUniform1i(froxelCompPrevVolumeLocation, 1);
+        glUniform1i(froxelCompDepthLocation, 2);
+        glUniform3f(froxelCompCameraPosLocation, cameraPos.x, cameraPos.y, cameraPos.z);
+        glUniform3f(froxelCompViewRightLocation, right.x, right.y, right.z);
+        glUniform3f(froxelCompViewUpLocation, up.x, up.y, up.z);
+        glUniform3f(froxelCompViewForwardLocation, forward.x, forward.y, forward.z);
+        glUniform2f(froxelCompNearFarLocation, NEAR_PLANE, FAR_PLANE);
+        glUniform2f(froxelCompScreenScaleLocation, aspect * tanHalfFov, tanHalfFov);
+        glUniform3i(froxelCompGridSizeLocation, froxelWidth, froxelHeight, froxelDepth);
+
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            FloatBuffer prevViewProjBuf = stack.mallocFloat(16);
+            prevViewProj.get(prevViewProjBuf);
+            glUniformMatrix4fv(froxelCompPrevViewProjLocation, false, prevViewProjBuf);
+        }
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_3D, froxelTex[writeIdx]);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_3D, froxelTex[1 - writeIdx]);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, mainDepthRbo);
+
+        glBindVertexArray(skyVao);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_3D, 0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_3D, 0);
+
+        froxelActiveIndex = 1 - froxelActiveIndex;
+        volumetricFrameCount++;
+
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
+    }
+
+    private void ensureFroxelTextures(int quality) {
+        if (quality <= 0 || quality == currentFroxelQuality) {
+            return;
+        }
+        for (int i = 0; i < 2; i++) {
+            if (froxelTex[i] != 0) {
+                glDeleteTextures(froxelTex[i]);
+                froxelTex[i] = 0;
+            }
+        }
+        switch (quality) {
+            case 1 -> { froxelWidth = 80; froxelHeight = 45; froxelDepth = 32; }
+            case 2 -> { froxelWidth = 120; froxelHeight = 67; froxelDepth = 48; }
+            default -> { froxelWidth = 160; froxelHeight = 90; froxelDepth = 64; }
+        }
+        for (int i = 0; i < 2; i++) {
+            froxelTex[i] = glGenTextures();
+            glBindTexture(GL_TEXTURE_3D, froxelTex[i]);
+            glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA16F, froxelWidth, froxelHeight, froxelDepth, 0, GL_RGBA, GL_FLOAT, 0L);
+            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+        }
+        glBindTexture(GL_TEXTURE_3D, 0);
+        currentFroxelQuality = quality;
+        froxelActiveIndex = 0;
+        volumetricFrameCount = 0;
     }
 
     private void renderTargetOutline(World world, Player player) {
@@ -1096,96 +1503,76 @@ public final class OpenGlRenderer {
         glEnable(GL_CULL_FACE);
     }
 
-    private void renderParticles(Player player) {
-        if (particleSystem == null || particleSystem.isEmpty()) {
+    private void renderParticles(Player player, Vector3f lightDirection, float lightR, float lightG, float lightB, float lightIntensity) {
+        if (particleSystem == null) {
             return;
         }
 
-        float aspect = (float) window.width() / (float) window.height();
-        Matrix4f mvp = new Matrix4f()
-                .perspective((float) Math.toRadians(FIELD_OF_VIEW_DEGREES), aspect, NEAR_PLANE, FAR_PLANE)
-                .mul(player.viewMatrix());
+        double now = GLFW.glfwGetTime();
+        float delta = (float) (now - lastParticleFrameTime);
+        lastParticleFrameTime = now;
+        delta = Math.min(delta, 0.1f);
 
+        List<Particle> newParticles = particleSystem.drainParticles();
+        if (!newParticles.isEmpty() && gpuParticleCount < MAX_GPU_PARTICLES) {
+            float[] data = particlesToFloatArray(newParticles);
+            int uploadCount = Math.min(newParticles.size(), MAX_GPU_PARTICLES - gpuParticleCount);
+            int floatCount = uploadCount * PARTICLE_STRIDE;
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, particleSsbo);
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                java.nio.FloatBuffer uploadBuf = stack.mallocFloat(floatCount);
+                uploadBuf.put(data, 0, floatCount);
+                uploadBuf.flip();
+                glBufferSubData(GL_SHADER_STORAGE_BUFFER,
+                        (long) gpuParticleCount * PARTICLE_STRIDE * Float.BYTES,
+                        uploadBuf);
+            }
+            gpuParticleCount += uploadCount;
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+        }
+
+        if (gpuParticleCount <= 0) {
+            return;
+        }
+
+        glUseProgram(particleComputeProgram);
+        glUniform1f(particleComputeDeltaLocation, delta);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particleSsbo);
+        glDispatchCompute((gpuParticleCount + 255) / 256, 1, 1);
+        glMemoryBarrier(GL_ALL_BARRIER_BITS);
+
+        Matrix4f mvp = new Matrix4f(jitteredViewProj);
         Vector3f forward = player.lookDirection(new Vector3f());
         Vector3f right = player.camera().right(new Vector3f());
         Vector3f up = new Vector3f(right).cross(forward).normalize();
 
-        float tileU = 1.0f / TextureAtlas.COLUMNS;
-        float tileV = 1.0f / TextureAtlas.ROWS;
-
-        List<Particle> particles = particleSystem.getParticles();
-        float[] vertices = new float[particles.size() * 36];
-        int idx = 0;
-        for (Particle p : particles) {
-            float alpha = Math.max(0.0f, p.life / p.maxLife);
-            if (alpha <= 0.0f) {
-                continue;
-            }
-
-            float hw = p.size * 0.5f;
-            float rx = right.x * hw, ry = right.y * hw, rz = right.z * hw;
-            float ux = up.x * hw, uy = up.y * hw, uz = up.z * hw;
-
-            float px = p.position.x, py = p.position.y, pz = p.position.z;
-
-            int slot = p.textureSlot;
-            float u0 = (slot % TextureAtlas.COLUMNS) * tileU;
-            float v0 = (slot / TextureAtlas.COLUMNS) * tileV;
-            float u1 = u0 + tileU;
-            float v1 = v0 + tileV;
-
-            // bottom-left
-            vertices[idx++] = px - rx - ux; vertices[idx++] = py - ry - uy; vertices[idx++] = pz - rz - uz;
-            vertices[idx++] = u0; vertices[idx++] = v0;
-            vertices[idx++] = alpha;
-            // bottom-right
-            vertices[idx++] = px + rx - ux; vertices[idx++] = py + ry - uy; vertices[idx++] = pz + rz - uz;
-            vertices[idx++] = u1; vertices[idx++] = v0;
-            vertices[idx++] = alpha;
-            // top-right
-            vertices[idx++] = px + rx + ux; vertices[idx++] = py + ry + uy; vertices[idx++] = pz + rz + uz;
-            vertices[idx++] = u1; vertices[idx++] = v1;
-            vertices[idx++] = alpha;
-            // bottom-left (second tri)
-            vertices[idx++] = px - rx - ux; vertices[idx++] = py - ry - uy; vertices[idx++] = pz - rz - uz;
-            vertices[idx++] = u0; vertices[idx++] = v0;
-            vertices[idx++] = alpha;
-            // top-right (second tri)
-            vertices[idx++] = px + rx + ux; vertices[idx++] = py + ry + uy; vertices[idx++] = pz + rz + uz;
-            vertices[idx++] = u1; vertices[idx++] = v1;
-            vertices[idx++] = alpha;
-            // top-left
-            vertices[idx++] = px - rx + ux; vertices[idx++] = py - ry + uy; vertices[idx++] = pz - rz + uz;
-            vertices[idx++] = u0; vertices[idx++] = v1;
-            vertices[idx++] = alpha;
-        }
-
-        if (idx == 0) {
-            return;
-        }
-
-        glUseProgram(particleProgram);
-        glUniform1i(particleAtlasLocation, 0);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, atlasTexture);
-
+        glUseProgram(particleRenderProgram);
         try (MemoryStack stack = MemoryStack.stackPush()) {
             FloatBuffer buf = stack.mallocFloat(16);
             mvp.get(buf);
-            glUniformMatrix4fv(particleMvpLocation, false, buf);
+            glUniformMatrix4fv(particleRenderMvpLocation, false, buf);
         }
+        glUniform3f(particleRenderCameraRightLocation, right.x, right.y, right.z);
+        glUniform3f(particleRenderCameraUpLocation, up.x, up.y, up.z);
+        glUniform1f(particleRenderTileULocation, 1.0f / TextureAtlas.COLUMNS);
+        glUniform1f(particleRenderTileVLocation, 1.0f / TextureAtlas.ROWS);
+        glUniform3f(particleRenderLightDirLocation, lightDirection.x, lightDirection.y, lightDirection.z);
+        glUniform3f(particleRenderLightColorLocation, lightR, lightG, lightB);
+        glUniform1f(particleRenderLightIntensityLocation, lightIntensity);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, atlasTexture);
 
         glDisable(GL_CULL_FACE);
         glDepthMask(false);
-
         glBindVertexArray(particleVao);
-        glBindBuffer(GL_ARRAY_BUFFER, particleVbo);
-        glBufferData(GL_ARRAY_BUFFER, vertices, GL_DYNAMIC_DRAW);
-        glDrawArrays(GL_TRIANGLES, 0, idx / 6);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, particleSsbo);
+        glDrawArrays(GL_TRIANGLES, 0, gpuParticleCount * 6);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
         glBindVertexArray(0);
-
         glDepthMask(true);
         glEnable(GL_CULL_FACE);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, 0);
     }
 
     private void renderHotbar(Player player) {
@@ -1336,12 +1723,90 @@ public final class OpenGlRenderer {
         glEnable(GL_CULL_FACE);
     }
 
+    private void renderCoordinates(Player player) {
+        Vector3f pos = player.eyePosition(new Vector3f());
+        String text = String.format("XYZ: %.1f / %.1f / %.1f", pos.x, pos.y, pos.z);
+        float glyphHeight = 22.0f;
+        float padding = 12.0f;
+        float startX = padding;
+        float startY = padding;
+
+        FloatArrayBuilder textVertices = new FloatArrayBuilder(256);
+        drawText(textVertices, text, startX, startY, 14.0f, glyphHeight, 3.0f);
+
+        if (textVertices.size() == 0) {
+            return;
+        }
+
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        renderTextBatch(textVertices);
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+    }
+
+    private void renderChat(List<engine.ChatMessage> messages, String inputText, boolean chatOpen) {
+        float glyphHeight = 22.0f;
+        float padding = 12.0f;
+        float lineHeight = glyphHeight + 4.0f;
+        float startX = padding;
+        float maxWidth = window.width() * 0.5f;
+
+        double now = System.currentTimeMillis() / 1000.0;
+        float batchAlpha = 1.0f;
+
+        FloatArrayBuilder textVertices = new FloatArrayBuilder(512);
+
+        float startY = window.height() - padding - lineHeight;
+        if (chatOpen) {
+            String inputLine = "> " + inputText + "_";
+            inputLine = truncateText(inputLine, maxWidth, glyphHeight, 14.0f);
+            drawText(textVertices, inputLine, startX, startY, 14.0f, glyphHeight, 3.0f);
+            startY -= lineHeight;
+        }
+
+        int visibleCount = Math.min(messages.size(), chatOpen ? 8 : 3);
+        for (int i = messages.size() - visibleCount; i < messages.size(); i++) {
+            engine.ChatMessage msg = messages.get(i);
+            double age = now - msg.timestamp();
+            float alpha = 1.0f;
+            if (!chatOpen && age > 10.0) {
+                alpha = (float) Math.max(0.0, 1.0 - (age - 10.0) / 3.0);
+            }
+            batchAlpha = Math.min(batchAlpha, alpha);
+            if (alpha > 0.001f) {
+                String text = truncateText(msg.text(), maxWidth, glyphHeight, 14.0f);
+                drawText(textVertices, text, startX, startY, 14.0f, glyphHeight, 3.0f);
+            }
+            startY -= lineHeight;
+        }
+
+        if (textVertices.size() == 0) {
+            return;
+        }
+
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        textAlpha = batchAlpha;
+        renderTextBatch(textVertices);
+        textAlpha = 1.0f;
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+    }
+
     private void renderGraphicsGui(GraphicsSettings settings) {
-        float panelWidth = 470.0f;
         float rowHeight = 42.0f;
         float panelHeight = 82.0f + settings.count() * rowHeight;
         float panelX = 32.0f;
         float panelY = 58.0f;
+
+        float panelWidth = 470.0f;
+        for (int i = 0; i < settings.count(); i++) {
+            float nameWidth = measureTextWidth(settings.name(i), 14.0f, 9.0f);
+            float valueWidth = measureTextWidth(settings.displayValue(i), 14.0f, 9.0f);
+            panelWidth = Math.max(panelWidth, panelX + 34.0f + nameWidth + 24.0f);
+            panelWidth = Math.max(panelWidth, panelX + 310.0f + valueWidth + 34.0f);
+        }
 
         FloatArrayBuilder vertices = new FloatArrayBuilder(8192);
         FloatArrayBuilder textVertices = new FloatArrayBuilder(4096);
@@ -1352,7 +1817,7 @@ public final class OpenGlRenderer {
         addRect(vertices, panelX + panelWidth - 3.0f, panelY, 3.0f, panelHeight, 0.12f, 0.15f, 0.17f, 0.95f);
 
         drawText(textVertices, "GRAPHICS", panelX + 22.0f, panelY + 18.0f, 12.0f, 18.0f, 2.5f);
-        drawText(textVertices, "F3 CLOSE", panelX + panelWidth - 126.0f, panelY + 20.0f, 8.0f, 12.0f, 2.0f);
+        drawText(textVertices, "F3 CLOSE", panelX + panelWidth - measureTextWidth("F3 CLOSE", 12.0f, 8.0f) - 22.0f, panelY + 20.0f, 8.0f, 12.0f, 2.0f);
 
         float rowY = panelY + 62.0f;
         for (int i = 0; i < settings.count(); i++) {
@@ -1402,6 +1867,10 @@ public final class OpenGlRenderer {
         float listY = 138.0f;
         float rowHeight = 34.0f;
         float listWidth = 440.0f;
+        for (int i = 0; i < worlds.size(); i++) {
+            float nameWidth = measureTextWidth(worlds.get(i).name(), 14.0f, 10.0f);
+            listWidth = Math.max(listWidth, nameWidth + 48.0f);
+        }
         addRect(vertices, listX - 12.0f, listY - 12.0f, listWidth, Math.max(140.0f, worlds.size() * rowHeight + 24.0f), 0.08f, 0.09f, 0.12f, 0.90f);
 
         for (int i = 0; i < worlds.size(); i++) {
@@ -1422,7 +1891,14 @@ public final class OpenGlRenderer {
         }
 
         if (namingWorld) {
-            float boxWidth = 520.0f;
+            String displayName = worldNameInput.isEmpty() ? "Type a name..." : worldNameInput;
+            String cursorText = displayName + (worldNameInput.isEmpty() ? "" : "_");
+            float titleWidth = measureTextWidth("NAME YOUR WORLD", 18.0f, 12.0f);
+            float inputWidth = measureTextWidth(cursorText, 14.0f, 10.0f);
+            float helpWidth = measureTextWidth("ENTER CONFIRM   ESC CANCEL", 10.0f, 7.0f);
+            float minBoxWidth = 520.0f;
+            float contentWidth = Math.max(titleWidth, Math.max(inputWidth + 52.0f, helpWidth + 56.0f));
+            float boxWidth = Math.max(minBoxWidth, contentWidth);
             float boxHeight = 150.0f;
             float boxX = window.width() * 0.5f - boxWidth * 0.5f;
             float boxY = window.height() * 0.5f - boxHeight * 0.5f;
@@ -1430,11 +1906,11 @@ public final class OpenGlRenderer {
             addRect(vertices, boxX, boxY, boxWidth, boxHeight, 0.12f, 0.14f, 0.18f, 0.97f);
             addRect(vertices, boxX + 2.0f, boxY + 2.0f, boxWidth - 4.0f, boxHeight - 4.0f, 0.18f, 0.20f, 0.24f, 0.95f);
             drawText(textVertices, "NAME YOUR WORLD", boxX + 28.0f, boxY + 20.0f, 12.0f, 18.0f, 2.4f);
-            String displayName = worldNameInput.isEmpty() ? "Type a name..." : worldNameInput;
             float textX = boxX + 28.0f;
             float textY = boxY + 64.0f;
-            addRect(vertices, textX - 6.0f, textY - 6.0f, 460.0f, 38.0f, 0.08f, 0.09f, 0.12f, 0.90f);
-            drawText(textVertices, displayName + (worldNameInput.isEmpty() ? "" : "_"), textX, textY, 10.0f, 14.0f, 2.0f);
+            float inputBoxWidth = Math.min(inputWidth + 52.0f, boxWidth - 56.0f);
+            addRect(vertices, textX - 6.0f, textY - 18.0f, inputBoxWidth, 26.0f, 0.08f, 0.09f, 0.12f, 0.90f);
+            drawText(textVertices, cursorText, textX, textY, 10.0f, 14.0f, 2.0f);
             drawText(textVertices, "ENTER CONFIRM   ESC CANCEL", boxX + 28.0f, boxY + 110.0f, 7.0f, 10.0f, 1.7f);
         }
 
@@ -1464,8 +1940,8 @@ public final class OpenGlRenderer {
     }
 
     private void drawText(FloatArrayBuilder vertices, String text, float x, float y, float glyphWidth, float glyphHeight, float thickness) {
-        float gap = Math.max(1.0f, glyphWidth * 0.12f);
         float cursorX = x;
+        float scale = glyphHeight / textAscent;
 
         for (int i = 0; i < text.length(); i++) {
             TextGlyph glyph = lookupTextGlyph(text.charAt(i));
@@ -1474,32 +1950,41 @@ public final class OpenGlRenderer {
             }
 
             if (glyph.width > 0.0f && glyph.height > 0.0f) {
-                float scale = glyphHeight / Math.max(1.0f, glyph.height);
-                float drawX = cursorX + glyph.xOffset * scale;
-                float drawY = y - glyph.yOffset * scale;
+                float drawX = Math.round(cursorX + glyph.xOffset * scale);
+                float drawY = Math.round(y + glyphHeight + glyph.yOffset * scale);
                 addTextQuad(vertices, drawX, drawY, glyph.width * scale, glyph.height * scale, glyph.u0, glyph.v0, glyph.u1, glyph.v1);
             }
 
-            float scale = glyph.height > 0.0f ? glyphHeight / Math.max(1.0f, glyph.height) : 1.0f;
-            float advance = Math.max(glyph.advance * scale, glyphWidth * 0.85f);
-            cursorX += advance + gap;
+            float advance = glyph.advance * scale;
+            cursorX += advance;
         }
     }
 
     private float measureTextWidth(String text, float glyphHeight, float glyphWidth) {
-        float gap = Math.max(1.0f, glyphWidth * 0.12f);
         float width = 0.0f;
+        float scale = glyphHeight / textAscent;
 
         for (int i = 0; i < text.length(); i++) {
             TextGlyph glyph = lookupTextGlyph(text.charAt(i));
             if (glyph == null) {
                 continue;
             }
-            float scale = glyph.height > 0.0f ? glyphHeight / Math.max(1.0f, glyph.height) : 1.0f;
-            width += Math.max(glyph.advance * scale, glyphWidth * 0.85f) + gap;
+            width += glyph.advance * scale;
         }
 
-        return Math.max(0.0f, width - gap);
+        return width;
+    }
+
+    private String truncateText(String text, float maxWidth, float glyphHeight, float glyphWidth) {
+        if (measureTextWidth(text, glyphHeight, glyphWidth) <= maxWidth) {
+            return text;
+        }
+        float ellipsisWidth = measureTextWidth("...", glyphHeight, glyphWidth);
+        int end = text.length();
+        while (end > 0 && measureTextWidth(text.substring(0, end), glyphHeight, glyphWidth) + ellipsisWidth > maxWidth) {
+            end--;
+        }
+        return text.substring(0, end) + "...";
     }
 
     private TextGlyph lookupTextGlyph(char glyph) {
@@ -1536,6 +2021,7 @@ public final class OpenGlRenderer {
 
         glUseProgram(textProgram);
         glUniform2f(textScreenSizeLocation, window.width(), window.height());
+        glUniform1f(textAlphaLocation, textAlpha);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textTexture);
         glBindVertexArray(textVao);
@@ -1555,6 +2041,7 @@ public final class OpenGlRenderer {
         scratchGraphics.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
         FontRenderContext fontRenderContext = scratchGraphics.getFontRenderContext();
         java.awt.FontMetrics metrics = scratchGraphics.getFontMetrics(font);
+        this.textAscent = metrics.getAscent();
 
         final int firstChar = 32;
         final int lastChar = 126;
@@ -1662,7 +2149,7 @@ public final class OpenGlRenderer {
 
     private int createTextProgram() {
         String vertexShader = """
-                #version 330 core
+                #version 430 core
                 layout(location = 0) in vec2 aPosition;
                 layout(location = 1) in vec2 aUv;
 
@@ -1681,15 +2168,16 @@ public final class OpenGlRenderer {
                 """;
 
         String fragmentShader = """
-                #version 330 core
+                #version 430 core
                 uniform sampler2D uFont;
+                uniform float uAlpha;
 
                 in vec2 vUv;
                 out vec4 fragColor;
 
                 void main() {
                     vec4 texel = texture(uFont, vUv);
-                    fragColor = texel;
+                    fragColor = vec4(texel.rgb, texel.a * uAlpha);
                 }
                 """;
 
@@ -1804,6 +2292,7 @@ public final class OpenGlRenderer {
                 || Math.abs(startZ - probeOrigin.z) >= PROBE_CELL_SIZE) {
             probeOrigin.set(startX, startY, startZ);
             probeUpdateCursor = 0;
+            probeShiftCooldown = (PROBE_GRID_X * PROBE_GRID_Y * PROBE_GRID_Z) / PROBE_UPDATES_PER_FRAME + 1;
         }
 
         float skyBrightness = ticks.getSkyBrightness();
@@ -1821,17 +2310,22 @@ public final class OpenGlRenderer {
             Vector3f probePos = new Vector3f(wx + 0.5f, wy + 0.5f, wz + 0.5f);
 
             float upVisibility = visibilityAlong(world, probePos, new Vector3f(0.0f, 1.0f, 0.0f), 22.0f);
-            float sideA = visibilityAlong(world, probePos, new Vector3f(1.0f, 0.2f, 0.0f).normalize(), 16.0f);
-            float sideB = visibilityAlong(world, probePos, new Vector3f(-1.0f, 0.2f, 0.0f).normalize(), 16.0f);
-            float sideC = visibilityAlong(world, probePos, new Vector3f(0.0f, 0.2f, 1.0f).normalize(), 16.0f);
-            float sideD = visibilityAlong(world, probePos, new Vector3f(0.0f, 0.2f, -1.0f).normalize(), 16.0f);
+            float downVisibility = visibilityAlong(world, probePos, new Vector3f(0.0f, -1.0f, 0.0f), 16.0f);
+            float sideA = visibilityAlong(world, probePos, new Vector3f(1.0f, 0.0f, 0.0f).normalize(), 16.0f);
+            float sideB = visibilityAlong(world, probePos, new Vector3f(-1.0f, 0.0f, 0.0f).normalize(), 16.0f);
+            float sideC = visibilityAlong(world, probePos, new Vector3f(0.0f, 0.0f, 1.0f).normalize(), 16.0f);
+            float sideD = visibilityAlong(world, probePos, new Vector3f(0.0f, 0.0f, -1.0f).normalize(), 16.0f);
+            float diagA = visibilityAlong(world, probePos, new Vector3f(1.0f, -0.5f, 1.0f).normalize(), 14.0f);
+            float diagB = visibilityAlong(world, probePos, new Vector3f(-1.0f, -0.5f, -1.0f).normalize(), 14.0f);
+            float diagC = visibilityAlong(world, probePos, new Vector3f(1.0f, -0.5f, -1.0f).normalize(), 14.0f);
+            float diagD = visibilityAlong(world, probePos, new Vector3f(-1.0f, -0.5f, 1.0f).normalize(), 14.0f);
             float sunVis = visibilityAlong(world, probePos, new Vector3f(sunDirection).negate(), 80.0f);
             float moonVis = visibilityAlong(world, probePos, new Vector3f(moonDirection).negate(), 64.0f);
 
             float sun = sunStrength(sunDirection) * sunVis;
             float moon = moonStrength(sunDirection) * moonVis;
 
-            float ambient = (0.08f + skyBrightness * 0.44f) * (0.30f + 0.36f * upVisibility + 0.085f * (sideA + sideB + sideC + sideD));
+            float ambient = (0.08f + skyBrightness * 0.44f) * (0.30f + 0.36f * upVisibility + 0.10f * downVisibility + 0.06f * (sideA + sideB + sideC + sideD + diagA + diagB + diagC + diagD));
             float sunTerm = sun * (0.55f + 0.45f * skyBrightness);
             float moonTerm = moon * 0.17f;
 
@@ -1839,12 +2333,15 @@ public final class OpenGlRenderer {
             float nextR = ambient * 0.58f + sunTerm * 1.00f + moonTerm * 0.60f;
             float nextG = ambient * 0.62f + sunTerm * 0.93f + moonTerm * 0.70f;
             float nextB = ambient * 0.75f + sunTerm * 0.78f + moonTerm * 0.95f;
-            float blend = 0.22f;
+            float blend = probeShiftCooldown > 0 ? 0.6f : 0.22f;
             probeData[base] = probeData[base] + (nextR - probeData[base]) * blend;
             probeData[base + 1] = probeData[base + 1] + (nextG - probeData[base + 1]) * blend;
             probeData[base + 2] = probeData[base + 2] + (nextB - probeData[base + 2]) * blend;
         }
         probeUpdateCursor = (probeUpdateCursor + PROBE_UPDATES_PER_FRAME) % total;
+        if (probeShiftCooldown > 0) {
+            probeShiftCooldown--;
+        }
 
         glBindTexture(GL_TEXTURE_3D, probeTexture);
         glTexSubImage3D(
@@ -1868,14 +2365,12 @@ public final class OpenGlRenderer {
         if (hit == null) {
             return 1.0f;
         }
-        return Math.max(0.0f, Math.min(1.0f, hit.distance() / maxDistance));
+        float normalizedDist = hit.distance() / maxDistance;
+        return Math.max(0.0f, Math.min(1.0f, normalizedDist * normalizedDist));
     }
 
     private Matrix4f worldViewProjection(Player player) {
-        float aspect = (float) window.width() / (float) window.height();
-        return new Matrix4f()
-                .perspective((float) Math.toRadians(FIELD_OF_VIEW_DEGREES), aspect, NEAR_PLANE, FAR_PLANE)
-                .mul(player.viewMatrix());
+        return new Matrix4f(currentProj).mul(currentView);
     }
 
     private void createShadowResources() {
@@ -2087,7 +2582,7 @@ public final class OpenGlRenderer {
 
     private int createWorldProgram() {
         String vertexShader = """
-                #version 330 core
+                #version 430 core
                 layout(location = 0) in vec3 aPosition;
                 layout(location = 1) in vec2 aUv;
                 layout(location = 2) in vec3 aNormal;
@@ -2107,15 +2602,16 @@ public final class OpenGlRenderer {
                     vNormal = aNormal;
                     vWorldPos = aPosition;
                     vAo = aAo;
+                    vec3 normalPos = aPosition + aNormal * 0.05;
                     for (int i = 0; i < 4; i++) {
-                        vShadowCoord[i] = uLightMvp[i] * vec4(aPosition, 1.0);
+                        vShadowCoord[i] = uLightMvp[i] * vec4(normalPos, 1.0);
                     }
                     gl_Position = uMvp * vec4(aPosition, 1.0);
                 }
                 """;
 
         String fragmentShader = """
-                #version 330 core
+                #version 430 core
                 in vec2 vUv;
                 in vec3 vNormal;
                 in vec3 vWorldPos;
@@ -2139,8 +2635,6 @@ public final class OpenGlRenderer {
                 uniform float uShadowStrength;
                 uniform int uShadowFilterRadius;
                 uniform int uRealisticLighting;
-                uniform float uFogDensity;
-
                 out vec4 fragColor;
 
                 const int CASCADE_COUNT = 4;
@@ -2167,7 +2661,7 @@ public final class OpenGlRenderer {
                     }
 
                     float ndotl = max(dot(normal, lightDir), 0.0);
-                    float bias = max(0.00035, mix(0.00320, 0.00055, ndotl));
+                    float bias = max(0.00015, mix(0.00160, 0.00035, ndotl));
                     float currentDepth = projected.z - bias;
                     float visibility = 0.0;
                     float sampleCount = 0.0;
@@ -2185,7 +2679,7 @@ public final class OpenGlRenderer {
                                 continue;
                             }
                             float closestDepth = texture(uShadowMap, vec3(uv, float(cascade))).r;
-                            visibility += currentDepth <= closestDepth ? 1.0 : 0.48;
+                            visibility += currentDepth <= closestDepth ? 1.0 : 0.0;
                             sampleCount += 1.0;
                         }
                     }
@@ -2198,7 +2692,7 @@ public final class OpenGlRenderer {
                     if (albedo.a < 0.01) {
                         discard;
                     }
-                    vec3 albedoLinear = uRealisticLighting == 1 ? pow(albedo.rgb, vec3(2.2)) : albedo.rgb;
+                    vec3 albedoLinear = pow(albedo.rgb, vec3(2.2));
 
                     vec3 normal = normalize(vNormal);
                     vec3 lightDir = normalize(-uLightDir);
@@ -2208,12 +2702,21 @@ public final class OpenGlRenderer {
                     int cascade = selectCascade(viewDistance);
                     float visibility = shadowFactor(cascade, vShadowCoord[cascade], normal, lightDir);
 
+                    float blendWidth = 16.0;
                     if (cascade < CASCADE_COUNT - 1) {
-                        float blendStart = uCascadeSplits[cascade] - 6.0;
-                        if (viewDistance > blendStart) {
-                            float t = clamp((viewDistance - blendStart) / 6.0, 0.0, 1.0);
-                            float nextVisibility = shadowFactor(cascade + 1, vShadowCoord[cascade + 1], normal, lightDir);
-                            visibility = mix(visibility, nextVisibility, t);
+                        float split = uCascadeSplits[cascade];
+                        float t = clamp((viewDistance - (split - blendWidth * 0.5)) / blendWidth, 0.0, 1.0);
+                        if (t > 0.0) {
+                            float nextVis = shadowFactor(cascade + 1, vShadowCoord[cascade + 1], normal, lightDir);
+                            visibility = mix(visibility, nextVis, t);
+                        }
+                    }
+                    if (cascade > 0) {
+                        float split = uCascadeSplits[cascade - 1];
+                        float t = clamp((viewDistance - (split - blendWidth * 0.5)) / blendWidth, 0.0, 1.0);
+                        if (t < 1.0) {
+                            float prevVis = shadowFactor(cascade - 1, vShadowCoord[cascade - 1], normal, lightDir);
+                            visibility = mix(prevVis, visibility, t);
                         }
                     }
                     visibility = mix(1.0, visibility, uShadowStrength);
@@ -2231,43 +2734,27 @@ public final class OpenGlRenderer {
                     vec3 lighting = (probeLight + ambientWrap) * mix(0.58, 1.0, vAo) + uLightColor * direct;
 
                     vec3 color = albedoLinear * lighting * faceShade;
-                    if (uRealisticLighting == 1) {
-                        vec3 fogColor = mix(vec3(0.44, 0.54, 0.66), uLightColor, 0.12);
-                        float fogAmount = 1.0 - exp(-viewDistance * uFogDensity * 0.0033);
-                        color = mix(color, fogColor * 0.36, clamp(fogAmount, 0.0, 0.16));
-                        color *= uExposure;
-                        color = color / (color + vec3(1.0));
-                        color = pow(color, vec3(1.0 / 2.2));
-                        color = (color - 0.5) * uContrast + 0.5;
-                    }
 
-                    fragColor = vec4(clamp(color, vec3(0.0), vec3(1.0)), albedo.a);
+                    fragColor = vec4(color, albedo.a);
                 }
                 """;
 
         return createProgram(vertexShader, fragmentShader);
     }
 
-    private int createVolumetricProgram() {
-        String vertexShader = """
-                #version 330 core
-                layout(location = 0) in vec2 aPosition;
-                out vec2 vPosition;
+    private int createFroxelAccumProgram() {
+        String computeSource = """
+                #version 430 core
+                layout(local_size_x = 8, local_size_y = 8) in;
 
-                void main() {
-                    vPosition = aPosition;
-                    gl_Position = vec4(aPosition, 0.997, 1.0);
-                }
-                """;
-
-        String fragmentShader = """
-                #version 330 core
-                in vec2 vPosition;
+                layout(rgba16f, binding = 0) uniform writeonly image3D uFroxelTex;
 
                 uniform vec3 uCameraPos;
                 uniform vec3 uViewRight;
                 uniform vec3 uViewUp;
                 uniform vec3 uViewForward;
+                uniform vec2 uNearFar;
+                uniform vec2 uScreenScale;
                 uniform vec3 uLightDir;
                 uniform vec3 uLightColor;
                 uniform float uLightIntensity;
@@ -2275,89 +2762,299 @@ public final class OpenGlRenderer {
                 uniform mat4 uLightMvp[4];
                 uniform float uCascadeSplits[4];
                 uniform float uShadowTexelSize;
-                uniform float uHScreenScale;
-                uniform float uVScreenScale;
+                uniform ivec3 uGridSize;
 
-                out vec4 fragColor;
+                float densityAt(vec3 pos) {
+                    return 0.0;
+                }
 
-                int selectCascade(float viewDistance) {
-                    if (viewDistance < uCascadeSplits[0]) {
-                        return 0;
-                    }
-                    if (viewDistance < uCascadeSplits[1]) {
-                        return 1;
-                    }
-                    if (viewDistance < uCascadeSplits[2]) {
-                        return 2;
-                    }
+                int selectCascade(float d) {
+                    if (d < uCascadeSplits[0]) return 0;
+                    if (d < uCascadeSplits[1]) return 1;
+                    if (d < uCascadeSplits[2]) return 2;
                     return 3;
                 }
 
-                float shadowVisibility(vec3 worldPos, float viewDistance) {
-                    int cascade = selectCascade(viewDistance);
-                    vec4 shadowCoord = uLightMvp[cascade] * vec4(worldPos, 1.0);
-                    vec3 projected = shadowCoord.xyz / max(shadowCoord.w, 0.0001);
-                    projected = projected * 0.5 + 0.5;
-                    if (projected.x < 0.0 || projected.x > 1.0 || projected.y < 0.0 || projected.y > 1.0 || projected.z > 1.0) {
-                        return 1.0;
-                    }
-
-                    float currentDepth = projected.z - 0.0014;
-                    float visibility = 0.0;
+                float shadowPCF(vec3 wpos, float vd) {
+                    int c = selectCascade(vd);
+                    vec4 sc = uLightMvp[c] * vec4(wpos, 1.0);
+                    vec3 p = sc.xyz / max(sc.w, 0.0001) * 0.5 + 0.5;
+                    if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z > 1.0) return 1.0;
+                    float depth = p.z - 0.0014;
+                    float v = 0.0;
                     for (int y = -1; y <= 1; y++) {
                         for (int x = -1; x <= 1; x++) {
-                            vec2 uv = projected.xy + vec2(float(x), float(y)) * uShadowTexelSize * 2.0;
+                            vec2 uv = p.xy + vec2(float(x), float(y)) * uShadowTexelSize * 2.0;
                             if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-                                visibility += 1.0;
+                                v += 1.0;
                             } else {
-                                float closestDepth = texture(uShadowMap, vec3(uv, float(cascade))).r;
-                                visibility += currentDepth <= closestDepth ? 1.0 : 0.08;
+                                float cd = texture(uShadowMap, vec3(uv, float(c))).r;
+                                v += depth <= cd ? 1.0 : 0.08;
                             }
                         }
                     }
-                    return visibility / 9.0;
+                    return v / 9.0;
                 }
 
                 void main() {
-                    vec3 rayDir = normalize(uViewForward + uViewRight * vPosition.x * uHScreenScale + uViewUp * vPosition.y * uVScreenScale);
-                    vec3 lightToScene = normalize(-uLightDir);
-                    float forwardScatter = pow(max(dot(rayDir, lightToScene), 0.0), 8.0);
-                    float sideScatter = pow(max(dot(rayDir, lightToScene), 0.0), 1.4) * 0.18;
-                    float phase = forwardScatter + sideScatter;
+                    ivec2 xy = ivec2(gl_GlobalInvocationID.xy);
+                    if (xy.x >= uGridSize.x || xy.y >= uGridSize.y) return;
 
-                    if (phase <= 0.002) {
-                        discard;
-                    }
+                    float near = uNearFar.x;
+                    float far = uNearFar.y;
 
-                    float accumulated = 0.0;
+                    float ndcX = (float(xy.x) + 0.5) / float(uGridSize.x) * 2.0 - 1.0;
+                    float ndcY = (float(xy.y) + 0.5) / float(uGridSize.y) * 2.0 - 1.0;
+                    vec3 rayDir = normalize(uViewForward + uViewRight * ndcX * uScreenScale.x + uViewUp * ndcY * uScreenScale.y);
+
                     float transmittance = 1.0;
-                    float stepLength = 5.0;
-                    float start = 2.0;
+                    vec3 lightAccum = vec3(0.0);
 
-                    for (int i = 0; i < 24; i++) {
-                        float dist = start + (float(i) + 0.5) * stepLength;
-                        vec3 samplePos = uCameraPos + rayDir * dist;
-                        float heightFade = smoothstep(-10.0, 18.0, samplePos.y) * (1.0 - smoothstep(120.0, 180.0, samplePos.y));
-                        float distanceFade = exp(-dist * 0.020);
-                        float visibility = shadowVisibility(samplePos, dist);
-                        float density = 0.030 * heightFade * distanceFade;
-                        float contribution = density * visibility * transmittance;
-                        accumulated += contribution;
-                        transmittance *= exp(-density * 0.55);
+                    for (int z = 0; z < uGridSize.z; z++) {
+                        float zn0 = float(z) / float(uGridSize.z);
+                        float zn1 = float(z + 1) / float(uGridSize.z);
+                        float d0 = near * pow(far / near, zn0);
+                        float d1 = near * pow(far / near, zn1);
+                        float dMid = (d0 + d1) * 0.5;
+                        float stepLen = d1 - d0;
+
+                        vec3 wpos = uCameraPos + rayDir * dMid;
+                        float vd = length(wpos - uCameraPos);
+
+                        float density = densityAt(wpos);
+
+                        if (density > 0.0001) {
+                            float sv = shadowPCF(wpos, vd);
+
+                            vec3 ld = normalize(-uLightDir);
+                            float od = 0.0;
+                            vec3 ls = ld * 3.0;
+                            vec3 sp = wpos + ls;
+                            for (int j = 0; j < 4; j++) {
+                                od += densityAt(sp) * 3.0;
+                                sp += ls;
+                            }
+                            float ss = exp(-od * 0.4);
+                            float lf = mix(sv * ss, 1.0, 0.12);
+
+                            vec3 is = uLightColor * density * lf * uLightIntensity * 0.15;
+                            float ex = density * 0.6;
+
+                            lightAccum += is * transmittance * stepLen;
+                            transmittance *= exp(-ex * stepLen);
+                        }
+
+                        imageStore(uFroxelTex, ivec3(xy.x, xy.y, z), vec4(lightAccum, transmittance));
+
+                        if (transmittance < 0.005) {
+                            for (int z2 = z + 1; z2 < uGridSize.z; z2++) {
+                                imageStore(uFroxelTex, ivec3(xy.x, xy.y, z2), vec4(lightAccum, transmittance));
+                            }
+                            break;
+                        }
+                    }
+                }
+                """;
+        return createComputeProgram(computeSource);
+    }
+
+    private int createFroxelCompositeProgram() {
+        String vertexShader = """
+                #version 430 core
+                layout(location = 0) in vec2 aPosition;
+                out vec2 vPosition;
+                void main() {
+                    vPosition = aPosition;
+                    gl_Position = vec4(aPosition, 0.997, 1.0);
+                }
+                """;
+
+        String fragmentShader = """
+                #version 430 core
+                in vec2 vPosition;
+                out vec4 fragColor;
+
+                uniform sampler3D uFroxelTex;
+                uniform sampler3D uPrevFroxelTex;
+                uniform sampler2D uDepthTex;
+                uniform vec3 uCameraPos;
+                uniform vec3 uViewRight;
+                uniform vec3 uViewUp;
+                uniform vec3 uViewForward;
+                uniform vec2 uNearFar;
+                uniform vec2 uScreenScale;
+                uniform mat4 uPrevViewProj;
+                uniform ivec3 uGridSize;
+
+                float linearizeDepth(float d) {
+                    float near = uNearFar.x;
+                    float far = uNearFar.y;
+                    return near * far / (far - d * (far - near));
+                }
+
+                void main() {
+                    vec2 uv = vPosition * 0.5 + 0.5;
+                    float depth = texture(uDepthTex, uv).r;
+
+                    if (depth >= 1.0) {
+                        fragColor = vec4(0.0);
+                        return;
                     }
 
-                    float alpha = clamp(accumulated * phase * uLightIntensity, 0.0, 0.22);
-                    vec3 color = uLightColor * (1.2 + phase * 1.8);
-                    fragColor = vec4(color, alpha);
+                    float linDepth = linearizeDepth(depth);
+                    float near = uNearFar.x;
+                    float far = uNearFar.y;
+                    float zNorm = clamp(log(linDepth / near) / log(far / near), 0.0, 1.0);
+
+                    vec3 texSize = vec3(textureSize(uFroxelTex, 0));
+                    vec3 volUV = (vec3(uv, zNorm) * vec3(uGridSize) + 0.5) / texSize;
+                    vec4 currentVol = texture(uFroxelTex, volUV);
+
+                    vec3 rayDir = normalize(uViewForward + uViewRight * vPosition.x * uScreenScale.x + uViewUp * vPosition.y * uScreenScale.y);
+                    vec3 worldPos = uCameraPos + rayDir * linDepth;
+
+                    vec4 prevClip = uPrevViewProj * vec4(worldPos, 1.0);
+                    vec3 prevNdc = prevClip.xyz / prevClip.w;
+                    vec2 prevUv = prevNdc.xy * 0.5 + 0.5;
+
+                    if (prevUv.x >= 0.0 && prevUv.x <= 1.0 && prevUv.y >= 0.0 && prevUv.y <= 1.0) {
+                        float prevLinDepth = linearizeDepth(prevNdc.z * 0.5 + 0.5);
+                        float depthDiff = abs(prevLinDepth - linDepth) / max(linDepth, 0.001);
+                        if (depthDiff <= 0.10) {
+                            float prevZ = clamp(log(prevLinDepth / near) / log(far / near), 0.0, 1.0);
+                            vec3 prevTexSize = vec3(textureSize(uPrevFroxelTex, 0));
+                            vec3 prevVolUV = (vec3(prevUv, prevZ) * vec3(uGridSize) + 0.5) / prevTexSize;
+                            vec4 prevVol = texture(uPrevFroxelTex, prevVolUV);
+                            float blend = 0.18;
+                            currentVol = mix(prevVol, currentVol, blend);
+                        }
+                    }
+
+                    fragColor = vec4(currentVol.rgb, 1.0);
                 }
                 """;
 
         return createProgram(vertexShader, fragmentShader);
     }
 
+    private int createComputeProgram(String computeSource) {
+        int computeShader = compileShader(GL_COMPUTE_SHADER, computeSource);
+        int program = glCreateProgram();
+        glAttachShader(program, computeShader);
+        glLinkProgram(program);
+        if (glGetProgrami(program, GL_LINK_STATUS) == GL_FALSE) {
+            String log = glGetProgramInfoLog(program);
+            glDeleteShader(computeShader);
+            glDeleteProgram(program);
+            throw new IllegalStateException("Compute program link failed: " + log);
+        }
+        glDeleteShader(computeShader);
+        return program;
+    }
+
+    private int createParticleRenderProgram() {
+        String vertexShader = """
+                #version 430 core
+                layout(std430, binding = 0) buffer ParticleBuffer {
+                    float particles[];
+                };
+                uniform mat4 uMvp;
+                uniform vec3 uCameraRight;
+                uniform vec3 uCameraUp;
+                uniform float uTileU;
+                uniform float uTileV;
+                uniform vec3 uLightDir;
+                uniform vec3 uLightColor;
+                uniform float uLightIntensity;
+                out vec2 vUv;
+                out float vAlpha;
+                out vec3 vLighting;
+                void main() {
+                    int idx = gl_VertexID / 6;
+                    int corner = gl_VertexID - idx * 6;
+                    int base = idx * 12;
+                    float life = particles[base + 3];
+                    if (life <= 0.0) {
+                        gl_Position = vec4(-2.0, -2.0, -2.0, 1.0);
+                        vAlpha = 0.0;
+                        vUv = vec2(0.0);
+                        vLighting = vec3(0.0);
+                        return;
+                    }
+                    float maxLife = particles[base + 7];
+                    float size = particles[base + 8];
+                    int texSlot = int(particles[base + 9]);
+                    float px = particles[base + 0];
+                    float py = particles[base + 1];
+                    float pz = particles[base + 2];
+                    float alpha = clamp(life / maxLife, 0.0, 1.0);
+                    float hx = size * 0.5;
+                    vec2 off;
+                    vec2 uv;
+                    if (corner == 0) { off = vec2(-hx, -hx); uv = vec2(0, 0); }
+                    else if (corner == 1) { off = vec2(-hx, hx); uv = vec2(0, 1); }
+                    else if (corner == 2) { off = vec2(hx, hx); uv = vec2(1, 1); }
+                    else if (corner == 3) { off = vec2(-hx, -hx); uv = vec2(0, 0); }
+                    else if (corner == 4) { off = vec2(hx, hx); uv = vec2(1, 1); }
+                    else { off = vec2(hx, -hx); uv = vec2(1, 0); }
+                    vec3 worldPos = vec3(px, py, pz) + uCameraRight * off.x + uCameraUp * off.y;
+                    gl_Position = uMvp * vec4(worldPos, 1.0);
+                    float col = float(texSlot - (texSlot / 16) * 16);
+                    float row = float(texSlot / 16);
+                    vUv = vec2((col + uv.x) * uTileU, (row + uv.y) * uTileV);
+                    vAlpha = alpha;
+                    vec3 lightDirN = normalize(-uLightDir);
+                    float ndotl = max(lightDirN.y * 0.5 + 0.5, 0.0);
+                    vLighting = uLightColor * ndotl * uLightIntensity;
+                }
+                """;
+        String fragmentShader = """
+                #version 430 core
+                in vec2 vUv;
+                in float vAlpha;
+                in vec3 vLighting;
+                out vec4 fragColor;
+                uniform sampler2D uAtlas;
+                void main() {
+                    vec4 color = texture(uAtlas, vUv);
+                    if (color.a < 0.01) discard;
+                    vec3 lit = color.rgb * vLighting;
+                    fragColor = vec4(lit, color.a * vAlpha);
+                }
+                """;
+        return createProgram(vertexShader, fragmentShader);
+    }
+
+    private void createParticleSsbo() {
+        particleSsbo = glGenBuffers();
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, particleSsbo);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, (long) MAX_GPU_PARTICLES * PARTICLE_STRIDE * Float.BYTES, GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    }
+
+    private float[] particlesToFloatArray(List<Particle> particles) {
+        float[] data = new float[particles.size() * PARTICLE_STRIDE];
+        int idx = 0;
+        for (Particle p : particles) {
+            data[idx++] = p.position.x;
+            data[idx++] = p.position.y;
+            data[idx++] = p.position.z;
+            data[idx++] = p.life;
+            data[idx++] = p.velocity.x;
+            data[idx++] = p.velocity.y;
+            data[idx++] = p.velocity.z;
+            data[idx++] = p.maxLife;
+            data[idx++] = p.size;
+            data[idx++] = (float) p.textureSlot;
+            data[idx++] = 0.0f;
+            data[idx++] = 0.0f;
+        }
+        return data;
+    }
+
     private int createShadowProgram() {
         String vertexShader = """
-                #version 330 core
+                #version 430 core
                 layout(location = 0) in vec3 aPosition;
 
                 uniform mat4 uLightMvp;
@@ -2368,7 +3065,7 @@ public final class OpenGlRenderer {
                 """;
 
         String fragmentShader = """
-                #version 330 core
+                #version 430 core
                 void main() {
                 }
                 """;
@@ -2378,7 +3075,7 @@ public final class OpenGlRenderer {
 
     private int createSkyProgram() {
         String vertexShader = """
-                #version 330 core
+                #version 430 core
                 layout(location = 0) in vec2 aPosition;
                 out vec2 vPosition;
 
@@ -2389,7 +3086,7 @@ public final class OpenGlRenderer {
                 """;
 
         String fragmentShader = """
-                #version 330 core
+                #version 430 core
                 in vec2 vPosition;
 
                 uniform vec3 uTopColor;
@@ -2401,7 +3098,6 @@ public final class OpenGlRenderer {
                 uniform sampler2D uSunTex;
                 uniform sampler2D uMoonTex;
                 uniform vec3 uCameraPos;
-                uniform float uCloudTime;
                 uniform vec3 uViewRight;
                 uniform vec3 uViewUp;
                 uniform vec3 uViewForward;
@@ -2413,138 +3109,6 @@ public final class OpenGlRenderer {
 
                 float hash(vec2 p) {
                     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-                }
-
-                float noise(vec2 p) {
-                    vec2 i = floor(p);
-                    vec2 f = fract(p);
-                    vec2 u = f * f * (3.0 - 2.0 * f);
-                    return mix(
-                            mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
-                            mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
-                            u.y
-                    );
-                }
-
-                float fbm(vec2 p) {
-                    float value = 0.0;
-                    float amplitude = 0.55;
-                    mat2 m = mat2(1.6, -1.2, 1.2, 1.6);
-                    for (int i = 0; i < 4; i++) {
-                        value += noise(p) * amplitude;
-                        p = m * p + vec2(17.7, 9.2);
-                        amplitude *= 0.50;
-                    }
-                    return value;
-                }
-
-                float hash3(vec3 p) {
-                    return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
-                }
-
-                float noise3(vec3 p) {
-                    vec3 i = floor(p);
-                    vec3 f = fract(p);
-                    vec3 u = f * f * (3.0 - 2.0 * f);
-
-                    float x00 = mix(hash3(i + vec3(0.0, 0.0, 0.0)), hash3(i + vec3(1.0, 0.0, 0.0)), u.x);
-                    float x10 = mix(hash3(i + vec3(0.0, 1.0, 0.0)), hash3(i + vec3(1.0, 1.0, 0.0)), u.x);
-                    float x01 = mix(hash3(i + vec3(0.0, 0.0, 1.0)), hash3(i + vec3(1.0, 0.0, 1.0)), u.x);
-                    float x11 = mix(hash3(i + vec3(0.0, 1.0, 1.0)), hash3(i + vec3(1.0, 1.0, 1.0)), u.x);
-                    float y0 = mix(x00, x10, u.y);
-                    float y1 = mix(x01, x11, u.y);
-                    return mix(y0, y1, u.z);
-                }
-
-                float fbm3(vec3 p) {
-                    float value = 0.0;
-                    float amplitude = 0.56;
-                    mat3 m = mat3(
-                        0.00,  0.80,  0.60,
-                       -0.80,  0.36, -0.48,
-                       -0.60, -0.48,  0.64
-                    );
-                    for (int i = 0; i < 5; i++) {
-                        value += noise3(p) * amplitude;
-                        p = m * p * 2.04 + vec3(19.1, 7.7, 13.3);
-                        amplitude *= 0.50;
-                    }
-                    return value;
-                }
-
-                float cloudDensity(vec3 worldPos) {
-                    const float cloudBottom = 62.0;
-                    const float cloudTop = 178.0;
-                    float height01 = clamp((worldPos.y - cloudBottom) / (cloudTop - cloudBottom), 0.0, 1.0);
-                    float flatBase = smoothstep(0.00, 0.12, height01);
-                    float softTop = 1.0 - smoothstep(0.58, 1.0, height01);
-                    float billowRise = smoothstep(0.06, 0.48, height01);
-                    float heightShape = flatBase * softTop;
-
-                    vec3 wind = vec3(uCloudTime * 0.0024, 0.0, uCloudTime * 0.0011);
-                    vec2 sheet = worldPos.xz * 0.0045 + wind.xz;
-                    float cover = fbm(sheet);
-                    float islands = smoothstep(0.42, 0.64, cover);
-
-                    vec3 broadPos = vec3(worldPos.x * 0.014, worldPos.y * 0.030, worldPos.z * 0.014) + wind * 4.0;
-                    vec3 detailPos = broadPos * 2.8 + vec3(31.0, 11.0, 47.0);
-                    float billow = fbm3(broadPos);
-                    float detail = fbm3(detailPos);
-                    float puffs = smoothstep(0.42, 0.68, billow + billowRise * 0.16);
-                    float erosion = smoothstep(0.40, 0.85, detail);
-                    float density = islands * puffs - erosion * 0.24;
-                    return clamp(density, 0.0, 1.0) * heightShape;
-                }
-
-                vec3 renderClouds(vec3 rayDir, vec3 sky, float dayAmount) {
-                    if (rayDir.y <= 0.018 || dayAmount <= 0.04) {
-                        return sky;
-                    }
-
-                    const float cloudBottom = 62.0;
-                    const float cloudTop = 178.0;
-                    float enterDistance = max((cloudBottom - uCameraPos.y) / rayDir.y, 0.0);
-                    float exitDistance = (cloudTop - uCameraPos.y) / rayDir.y;
-                    if (exitDistance <= enterDistance) {
-                        return sky;
-                    }
-
-                    exitDistance = min(exitDistance, 1900.0);
-                    float stepLength = (exitDistance - enterDistance) / 24.0;
-                    float dither = fract(sin(dot(vPosition.xy + uCloudTime * 0.01, vec2(12.9898, 78.233))) * 43758.5453);
-                    float transmittance = 1.0;
-                    float alpha = 0.0;
-                    vec3 cloudColor = vec3(0.0);
-                    vec3 sunDir = normalize(-uSunDir);
-
-                    for (int i = 0; i < 24; i++) {
-                        float distanceAlongRay = enterDistance + (float(i) + dither) * stepLength;
-                        vec3 samplePos = uCameraPos + rayDir * distanceAlongRay;
-                        float density = cloudDensity(samplePos);
-                        if (density > 0.001) {
-                            float shadow = 0.0;
-                            shadow += cloudDensity(samplePos + sunDir * 18.0);
-                            shadow += cloudDensity(samplePos + sunDir * 44.0) * 0.65;
-                            shadow += cloudDensity(samplePos + sunDir * 84.0) * 0.35;
-                            shadow = clamp(shadow * 0.44, 0.0, 1.0);
-                            float silverLining = pow(max(dot(rayDir, sunDir), 0.0), 7.0) * (1.0 - shadow);
-                            float forwardLight = 0.42 + 0.58 * max(dot(rayDir, sunDir), 0.0);
-                            float topLight = smoothstep(cloudBottom, cloudTop, samplePos.y);
-                            vec3 shadeColor = vec3(0.38, 0.39, 0.40);
-                            vec3 sunColor = vec3(1.0, 0.96, 0.84);
-                            vec3 litCloud = mix(shadeColor, sunColor, clamp(forwardLight * 0.46 + topLight * 0.42 + silverLining * 0.46 - shadow * 0.36, 0.0, 1.0));
-                            float sampleAlpha = density * stepLength * 0.016 * dayAmount;
-                            sampleAlpha = clamp(sampleAlpha, 0.0, 0.25);
-                            cloudColor += litCloud * sampleAlpha * transmittance;
-                            alpha += sampleAlpha * transmittance;
-                            transmittance *= exp(-sampleAlpha * 2.35);
-                        }
-                    }
-
-                    float horizonFade = smoothstep(0.018, 0.08, rayDir.y);
-                    alpha = clamp(alpha * horizonFade, 0.0, 0.88);
-                    vec3 resolvedCloud = cloudColor / max(alpha, 0.001);
-                    return mix(sky, resolvedCloud, alpha);
                 }
 
                 void main() {
@@ -2602,7 +3166,6 @@ public final class OpenGlRenderer {
 
                     vec3 gray = vec3(dot(sky, vec3(0.299, 0.587, 0.114)));
                     sky = mix(gray, sky, uSkySaturation);
-                    sky = renderClouds(viewDir, sky, dayAmount);
                     fragColor = vec4(sky, 1.0);
                 }
                 """;
@@ -2612,7 +3175,7 @@ public final class OpenGlRenderer {
 
     private int createOutlineProgram() {
         String vertexShader = """
-                #version 330 core
+                #version 430 core
                 layout(location = 0) in vec3 aPosition;
                 layout(location = 1) in vec4 aColor;
 
@@ -2627,7 +3190,7 @@ public final class OpenGlRenderer {
                 """;
 
         String fragmentShader = """
-                #version 330 core
+                #version 430 core
                 in vec4 vColor;
                 out vec4 fragColor;
 
@@ -2641,7 +3204,7 @@ public final class OpenGlRenderer {
 
     private int createParticleProgram() {
         String vertexShader = """
-                #version 330 core
+                #version 430 core
                 layout(location = 0) in vec3 aPosition;
                 layout(location = 1) in vec2 aUv;
                 layout(location = 2) in float aAlpha;
@@ -2659,7 +3222,7 @@ public final class OpenGlRenderer {
                 """;
 
         String fragmentShader = """
-                #version 330 core
+                #version 430 core
                 in vec2 vUv;
                 in float vAlpha;
                 out vec4 fragColor;
@@ -2677,7 +3240,7 @@ public final class OpenGlRenderer {
 
     private int createHudProgram() {
         String vertexShader = """
-                #version 330 core
+                #version 430 core
                 layout(location = 0) in vec2 aPosition;
                 layout(location = 1) in vec4 aColor;
 
@@ -2696,7 +3259,7 @@ public final class OpenGlRenderer {
                 """;
 
         String fragmentShader = """
-                #version 330 core
+                #version 430 core
                 in vec4 vColor;
                 out vec4 fragColor;
 
@@ -2710,7 +3273,7 @@ public final class OpenGlRenderer {
 
     private int createHudTextureProgram() {
         String vertexShader = """
-                #version 330 core
+                #version 430 core
                 layout(location = 0) in vec2 aPosition;
                 layout(location = 1) in vec2 aUv;
 
@@ -2729,7 +3292,7 @@ public final class OpenGlRenderer {
                 """;
 
         String fragmentShader = """
-                #version 330 core
+                #version 430 core
                 uniform sampler2D uTex;
 
                 in vec2 vUv;
@@ -2745,6 +3308,376 @@ public final class OpenGlRenderer {
         glUniform1i(glGetUniformLocation(program, "uTex"), 0);
         glUseProgram(0);
         return program;
+    }
+
+    private void createMainFbo() {
+        int w = window.width();
+        int h = window.height();
+
+        mainColorTex = glGenTextures();
+        glBindTexture(GL_TEXTURE_2D, mainColorTex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, 0L);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        mainDepthRbo = glGenTextures();
+        glBindTexture(GL_TEXTURE_2D, mainDepthRbo);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, w, h, 0, GL_DEPTH_COMPONENT, GL_FLOAT, 0L);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        mainFbo = glGenFramebuffers();
+        glBindFramebuffer(GL_FRAMEBUFFER, mainFbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mainColorTex, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, mainDepthRbo, 0);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            throw new IllegalStateException("Main framebuffer is incomplete");
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    private void createCloudFbos() {
+        int cw = Math.max(1, window.width() / 2);
+        int ch = Math.max(1, window.height() / 2);
+
+        cloudColorTex = glGenTextures();
+        glBindTexture(GL_TEXTURE_2D, cloudColorTex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, cw, ch, 0, GL_RGBA, GL_FLOAT, 0L);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        cloudFbo = glGenFramebuffers();
+        glBindFramebuffer(GL_FRAMEBUFFER, cloudFbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cloudColorTex, 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            throw new IllegalStateException("Cloud framebuffer is incomplete");
+        }
+
+        int w = window.width();
+        int h = window.height();
+        cloudBackupTex = glGenTextures();
+        glBindTexture(GL_TEXTURE_2D, cloudBackupTex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, 0L);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        cloudBackupFbo = glGenFramebuffers();
+        glBindFramebuffer(GL_FRAMEBUFFER, cloudBackupFbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, cloudBackupTex, 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            throw new IllegalStateException("Cloud backup framebuffer is incomplete");
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    private void resizeFbos() {
+        if (mainColorTex != 0) {
+            glDeleteTextures(mainColorTex);
+        }
+        if (mainDepthRbo != 0) {
+            glDeleteTextures(mainDepthRbo);
+        }
+        if (mainFbo != 0) {
+            glDeleteFramebuffers(mainFbo);
+        }
+        if (cloudColorTex != 0) {
+            glDeleteTextures(cloudColorTex);
+        }
+        if (cloudBackupTex != 0) {
+            glDeleteTextures(cloudBackupTex);
+        }
+        if (cloudFbo != 0) {
+            glDeleteFramebuffers(cloudFbo);
+        }
+        if (cloudBackupFbo != 0) {
+            glDeleteFramebuffers(cloudBackupFbo);
+        }
+        for (int i = 0; i < 2; i++) {
+            if (froxelTex[i] != 0) {
+                glDeleteTextures(froxelTex[i]);
+                froxelTex[i] = 0;
+            }
+        }
+        mainColorTex = 0;
+        mainDepthRbo = 0;
+        mainFbo = 0;
+        cloudColorTex = 0;
+        cloudBackupTex = 0;
+        cloudFbo = 0;
+        cloudBackupFbo = 0;
+        createMainFbo();
+        createCloudFbos();
+        currentFroxelQuality = -1;
+    }
+
+    private void renderOutput(float contrast, float exposure) {
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+
+        glUseProgram(outputProgram);
+        glUniform1i(outputTexLocation, 0);
+        glUniform1i(outputUseTonemapLocation, 1);
+        glUniform1f(outputContrastLocation, contrast);
+        glUniform1f(outputExposureLocation, exposure);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, mainColorTex);
+
+        glBindVertexArray(skyVao);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+    }
+
+    private int createCloudProgram() {
+        String vertexShader = """
+                #version 430 core
+                layout(location = 0) in vec2 aPosition;
+                out vec2 vPosition;
+                void main() {
+                    vPosition = aPosition;
+                    gl_Position = vec4(aPosition, 0.998, 1.0);
+                }
+                """;
+
+        String fragmentShader = """
+                #version 430 core
+                in vec2 vPosition;
+
+                uniform vec3 uCameraPos;
+                uniform vec3 uViewRight;
+                uniform vec3 uViewUp;
+                uniform vec3 uViewForward;
+                uniform float uHScreenScale;
+                uniform float uVScreenScale;
+                uniform vec3 uSunDir;
+                uniform vec3 uSunColor;
+                uniform float uTime;
+                uniform float uCoverage;
+                uniform float uBaseAlt;
+                uniform float uTopAlt;
+                uniform vec2 uWindDir;
+                uniform float uWindSpeed;
+
+                out vec4 fragColor;
+
+                const float PI = 3.14159265;
+
+                float hash(vec3 p) {
+                    p = fract(p * 0.3183099 + 0.1);
+                    p *= 17.0;
+                    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+                }
+
+                float noise3(vec3 p) {
+                    vec3 i = floor(p);
+                    vec3 f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f);
+                    float a = hash(i);
+                    float b = hash(i + vec3(1.0, 0.0, 0.0));
+                    float c = hash(i + vec3(0.0, 1.0, 0.0));
+                    float d = hash(i + vec3(1.0, 1.0, 0.0));
+                    float e = hash(i + vec3(0.0, 0.0, 1.0));
+                    float f_ = hash(i + vec3(1.0, 0.0, 1.0));
+                    float g = hash(i + vec3(0.0, 1.0, 1.0));
+                    float h = hash(i + vec3(1.0, 1.0, 1.0));
+                    float mix1 = mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+                    float mix2 = mix(mix(e, f_, f.x), mix(g, h, f.x), f.y);
+                    return mix(mix1, mix2, f.z);
+                }
+
+                float fbm(vec3 p) {
+                    float value = 0.0;
+                    float amp = 0.5;
+                    float freq = 1.0;
+                    for (int i = 0; i < 5; i++) {
+                        value += amp * noise3(p * freq);
+                        freq *= 2.1;
+                        amp *= 0.5;
+                    }
+                    return value;
+                }
+
+                float cloudDensity(vec3 p) {
+                    vec3 windOffset = vec3(uWindDir * uWindSpeed * uTime, 0.0);
+                    vec3 pos = p + windOffset;
+
+                    float base = fbm(pos * 0.0012);
+                    if (base < 0.03) return 0.0;
+
+                    vec3 warp = vec3(
+                        noise3(pos * 0.008 + 100.0),
+                        noise3(pos * 0.008 + 200.0),
+                        0.0
+                    ) * 2.5;
+                    pos += warp;
+
+                    float detail = 0.0;
+                    float damp = 0.8;
+                    float dfreq = 0.025;
+                    for (int i = 0; i < 4; i++) {
+                        detail += damp * noise3(pos * dfreq + vec3(0.0, uTime * 0.006, 0.0));
+                        dfreq *= 2.5;
+                        damp *= 0.45;
+                    }
+
+                    float height = smoothstep(uBaseAlt, uTopAlt, p.y);
+                    float density = max(base - 0.2, 0.0) * 2.0;
+                    density *= 1.0 - smoothstep(0.3, 0.9, detail);
+                    density *= height;
+
+                    float weather = noise3(p * 0.0005 + 50.0);
+                    density *= smoothstep(1.0 - uCoverage * 0.9, 1.0, weather);
+
+                    return max(density - 0.02, 0.0);
+                }
+
+                float henyeyGreenstein(float cosTheta, float g) {
+                    float gg = g * g;
+                    return (1.0 - gg) / (4.0 * PI * pow(1.0 + gg - 2.0 * g * cosTheta, 1.5));
+                }
+
+                void main() {
+                    vec3 rayDir = normalize(uViewForward + uViewRight * vPosition.x * uHScreenScale + uViewUp * vPosition.y * uVScreenScale);
+
+                    float tNear = (uBaseAlt - uCameraPos.y) / rayDir.y;
+                    float tFar = (uTopAlt - uCameraPos.y) / rayDir.y;
+                    if (rayDir.y < 0.0) {
+                        float tmp = tNear; tNear = tFar; tFar = tmp;
+                    }
+                    tNear = max(tNear, 0.0);
+                    float maxDist = 180.0;
+                    tFar = min(tFar, maxDist);
+                    if (tNear >= tFar) {
+                        fragColor = vec4(0.0);
+                        return;
+                    }
+
+                    float stepSize = (tFar - tNear) / 32.0;
+                    float jitter = fract(sin(dot(vPosition, vec2(12.989, 78.233))) * 43758.5453);
+                    float t = tNear + jitter * stepSize;
+
+                    vec3 accumulatedLight = vec3(0.0);
+                    float transmittance = 1.0;
+                    float extinction = 0.04;
+
+                    vec3 sunDirNorm = normalize(-uSunDir);
+
+                    for (int i = 0; i < 32; i++) {
+                        vec3 pos = uCameraPos + rayDir * t;
+                        float density = cloudDensity(pos);
+
+                        if (density > 0.001) {
+                            float cosTheta = dot(rayDir, sunDirNorm);
+                            float phase = henyeyGreenstein(cosTheta, 0.6);
+
+                            vec3 lightPos = pos + sunDirNorm * 30.0;
+                            float shadowDensity = cloudDensity(lightPos) * 0.4;
+                            shadowDensity += cloudDensity(lightPos + sunDirNorm * 30.0) * 0.3;
+                            shadowDensity += cloudDensity(lightPos + sunDirNorm * 60.0) * 0.2;
+                            shadowDensity += cloudDensity(lightPos + sunDirNorm * 90.0) * 0.1;
+                            float lightTrans = exp(-shadowDensity * 0.5);
+
+                            float scatter = density * phase * 1.2;
+                            float alpha = density * stepSize * extinction;
+                            vec3 contrib = uSunColor * scatter * lightTrans * stepSize * 0.5;
+
+                            vec3 ambient = vec3(0.15, 0.20, 0.30) * density * 0.06 * stepSize;
+
+                            accumulatedLight += (contrib + ambient) * transmittance;
+                            transmittance *= exp(-alpha);
+                        }
+
+                        t += stepSize;
+                        if (transmittance < 0.005) break;
+                    }
+
+                    float horizonFade = smoothstep(0.0, 0.04, rayDir.y);
+                    float cloudAlpha = (1.0 - transmittance) * horizonFade;
+
+                    fragColor = vec4(accumulatedLight, clamp(cloudAlpha, 0.0, 1.0));
+                }
+                """;
+
+        return createProgram(vertexShader, fragmentShader);
+    }
+
+    private int createCompositeProgram() {
+        String vertexShader = """
+                #version 430 core
+                layout(location = 0) in vec2 aPosition;
+                out vec2 vUv;
+                void main() {
+                    vUv = aPosition * 0.5 + 0.5;
+                    gl_Position = vec4(aPosition, 0.0, 1.0);
+                }
+                """;
+
+        String fragmentShader = """
+                #version 430 core
+                in vec2 vUv;
+                uniform sampler2D uSkyTex;
+                uniform sampler2D uCloudTex;
+                out vec4 fragColor;
+                void main() {
+                    vec3 skyColor = texture(uSkyTex, vUv).rgb;
+                    vec4 cloud = texture(uCloudTex, vUv);
+                    vec3 result = cloud.rgb + skyColor * (1.0 - cloud.a);
+                    fragColor = vec4(result, 1.0);
+                }
+                """;
+
+        return createProgram(vertexShader, fragmentShader);
+    }
+
+    private int createOutputProgram() {
+        String vertexShader = """
+                #version 430 core
+                layout(location = 0) in vec2 aPosition;
+                out vec2 vUv;
+                void main() {
+                    vUv = aPosition * 0.5 + 0.5;
+                    gl_Position = vec4(aPosition, 0.0, 1.0);
+                }
+                """;
+
+        String fragmentShader = """
+                #version 430 core
+                in vec2 vUv;
+                uniform sampler2D uTex;
+                uniform int uUseTonemap;
+                out vec4 fragColor;
+                uniform float uContrast;
+                uniform float uExposure;
+                void main() {
+                    vec3 color = texture(uTex, vUv).rgb;
+                    color *= uExposure;
+                    if (uUseTonemap == 1) {
+                        color = color / (color + vec3(1.0));
+                        color = pow(color, vec3(1.0 / 2.2));
+                        color = (color - 0.5) * uContrast + 0.5;
+                    }
+                    fragColor = vec4(color, 1.0);
+                }
+                """;
+
+        return createProgram(vertexShader, fragmentShader);
     }
 
     private int createProgram(String vertexSource, String fragmentSource) {
@@ -2790,6 +3723,29 @@ public final class OpenGlRenderer {
     private static final int SEGMENT_E = 1 << 4;
     private static final int SEGMENT_F = 1 << 5;
     private static final int SEGMENT_G = 1 << 6;
+
+    private static final String PARTICLE_COMPUTE_SOURCE = """
+            #version 430 core
+            layout(local_size_x = 256) in;
+            layout(std430, binding = 0) buffer ParticleBuffer {
+                float particles[];
+            };
+            uniform float uDelta;
+            void main() {
+                uint idx = gl_GlobalInvocationID.x;
+                uint base = idx * 12u;
+                if (base + 11u >= particles.length()) return;
+                float life = particles[base + 3u];
+                if (life <= 0.0) return;
+                float vy = particles[base + 5u];
+                vy -= 15.0 * uDelta;
+                particles[base + 0u] += particles[base + 4u] * uDelta;
+                particles[base + 1u] += vy * uDelta;
+                particles[base + 2u] += particles[base + 6u] * uDelta;
+                particles[base + 5u] = vy;
+                particles[base + 3u] -= uDelta;
+            }
+            """;
 
     private static Matrix4f[] createCascadeMatrices() {
         Matrix4f[] matrices = new Matrix4f[CASCADE_COUNT];
